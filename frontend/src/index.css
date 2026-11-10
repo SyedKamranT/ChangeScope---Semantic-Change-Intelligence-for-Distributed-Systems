@@ -1,0 +1,32 @@
+@import '@xyflow/react/dist/style.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: #090d16;
+  color: #f1f5f9;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Custom styling for xyflow dark mode */
+.react-flow__background {
+  background-color: #090d16 !important;
+}
+
+.react-flow__controls button {
+  background-color: #101726 !important;
+  color: #94a3b8 !important;
+  border-bottom: 1px solid #1f293d !important;
+}
+
+.react-flow__controls button:hover {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}
