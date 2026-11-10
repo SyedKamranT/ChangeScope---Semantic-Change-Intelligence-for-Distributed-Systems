@@ -1,0 +1,792 @@
+{
+  "$schema": "../schemas/software_ontology.jsonld",
+  "tenant_id": "tenant-cseo-enterprise-01",
+  "ontology_version": "1.0.0",
+  "topology_name": "ChangeScope Reference 5-Microservice Enterprise Topology",
+  "description": "Concrete 5-microservice distributed architecture demonstrating static AST, contract, and runtime OTel relationships, semantic disambiguation, and multi-tier provenance.",
+  "business_concepts": [
+    {
+      "urn": "urn:cseo:concept:CustomerIdentifier",
+      "name": "Customer Identifier",
+      "category": "Identifier",
+      "bounded_context": "global",
+      "description": "Universal unique identifier representing an authenticated buyer or tenant customer across all platform services.",
+      "synonyms": [
+        "customer_id",
+        "account_holder_uuid",
+        "user_id",
+        "recipient_id",
+        "buyer_uuid"
+      ],
+      "homonym_distinctions": {},
+      "constraints": {
+        "format": "uuid-v4",
+        "immutable": true
+      }
+    },
+    {
+      "urn": "urn:cseo:concept:MonetaryValue",
+      "name": "Monetary Value (Minor Units)",
+      "category": "MonetaryValue",
+      "bounded_context": "financial",
+      "description": "Exact integer monetary quantity represented in currency minor units (e.g. cents) to eliminate floating-point drift.",
+      "synonyms": [
+        "amount_cents",
+        "charge_cents",
+        "total_price_cents",
+        "balance_minor_units"
+      ],
+      "homonym_distinctions": {},
+      "constraints": {
+        "type": "integer",
+        "min": 0,
+        "currency_standard": "ISO-4217"
+      }
+    },
+    {
+      "urn": "urn:cseo:concept:auth:Account",
+      "name": "Identity Authentication Account",
+      "category": "Account",
+      "bounded_context": "auth",
+      "description": "Authentication credential, role assignment, and security login profile managed by auth-service.",
+      "synonyms": [
+        "user_account",
+        "login_principal",
+        "auth_profile"
+      ],
+      "homonym_distinctions": {
+        "billing": "Financial ledger account storing cash balances and payment instruments."
+      },
+      "constraints": {
+        "mfa_enforceable": true
+      }
+    },
+    {
+      "urn": "urn:cseo:concept:billing:Account",
+      "name": "General Ledger Settlement Account",
+      "category": "Account",
+      "bounded_context": "billing",
+      "description": "Double-entry bookkeeping ledger account in payment-service tracking receivables, payables, and transactions.",
+      "synonyms": [
+        "ledger_account",
+        "merchant_account",
+        "settlement_wallet"
+      ],
+      "homonym_distinctions": {
+        "auth": "Security identity login account with credentials and JWT grants."
+      },
+      "constraints": {
+        "currency_locked": true
+      }
+    },
+    {
+      "urn": "urn:cseo:concept:OrderStatus",
+      "name": "Order Lifecycle State",
+      "category": "Status",
+      "bounded_context": "order",
+      "description": "Discrete state of a customer order in order-service.",
+      "synonyms": [
+        "order_state",
+        "fulfillment_status"
+      ],
+      "homonym_distinctions": {
+        "inventory": "Warehouse stock allocation state."
+      },
+      "constraints": {
+        "allowed_values": ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "CANCELLED"]
+      }
+    }
+  ],
+  "entities": [
+    {
+      "id": "ent-org-01",
+      "canonical_urn": "urn:cseo:org:GlobalCommerce",
+      "entity_type": "Organization",
+      "name": "Global Commerce Enterprise",
+      "description": "Parent corporate entity owning digital commerce systems",
+      "properties": {"region": "us-east-1", "compliance_tier": "SOC2_TYPE2"}
+    },
+    {
+      "id": "ent-ws-01",
+      "canonical_urn": "urn:cseo:ws:ProductionEcommerce",
+      "entity_type": "Workspace",
+      "name": "Production E-Commerce Workspace",
+      "description": "Active production cluster workspace for customer checkout",
+      "properties": {"environment": "production"}
+    },
+    {
+      "id": "ent-owner-checkout",
+      "canonical_urn": "urn:cseo:owner:CheckoutSquad",
+      "entity_type": "Owner",
+      "name": "Checkout Engineering Squad",
+      "description": "Core checkout and order processing team",
+      "properties": {"slack_channel": "#squad-checkout", "oncall": "pagerduty:checkout-team"}
+    },
+    {
+      "id": "ent-owner-security",
+      "canonical_urn": "urn:cseo:owner:PlatformSecurity",
+      "entity_type": "Owner",
+      "name": "Platform Security Team",
+      "description": "Identity, authentication, and compliance governance team",
+      "properties": {"slack_channel": "#sec-ops"}
+    },
+    {
+      "id": "ent-perm-orders-write",
+      "canonical_urn": "urn:cseo:perm:orders:write",
+      "entity_type": "Permission",
+      "name": "orders:write",
+      "description": "Authority to create and modify customer order records",
+      "properties": {"scope": "orders", "action": "write"}
+    },
+    {
+      "id": "ent-perm-auth-admin",
+      "canonical_urn": "urn:cseo:perm:auth:admin",
+      "entity_type": "Permission",
+      "name": "auth:admin",
+      "description": "Administrative authority to manage identity profiles",
+      "properties": {"scope": "auth", "action": "admin"}
+    },
+    {
+      "id": "ent-workflow-checkout",
+      "canonical_urn": "urn:cseo:workflow:CheckoutAndFulfillOrder",
+      "entity_type": "Workflow",
+      "name": "Checkout and Fulfill Order Workflow",
+      "description": "Distributed saga coordinating order placement, card authorization, stock reservation, and dispatch",
+      "properties": {"saga_type": "orchestrated", "sla_seconds": 30}
+    },
+    {
+      "id": "ent-repo-auth",
+      "canonical_urn": "urn:cseo:repo:auth-service",
+      "entity_type": "Repository",
+      "name": "auth-service",
+      "description": "OAuth2 / OIDC Identity provider and user profile microservice",
+      "properties": {"language": "python", "framework": "fastapi"}
+    },
+    {
+      "id": "ent-repo-order",
+      "canonical_urn": "urn:cseo:repo:order-service",
+      "entity_type": "Repository",
+      "name": "order-service",
+      "description": "Customer order orchestration and lifecycle microservice",
+      "properties": {"language": "python", "framework": "fastapi"}
+    },
+    {
+      "id": "ent-repo-payment",
+      "canonical_urn": "urn:cseo:repo:payment-service",
+      "entity_type": "Repository",
+      "name": "payment-service",
+      "description": "Payment gateway client and general ledger microservice",
+      "properties": {"language": "typescript", "framework": "express"}
+    },
+    {
+      "id": "ent-repo-inventory",
+      "canonical_urn": "urn:cseo:repo:inventory-service",
+      "entity_type": "Repository",
+      "name": "inventory-service",
+      "description": "Warehouse stock inventory reservation microservice",
+      "properties": {"language": "python", "framework": "fastapi"}
+    },
+    {
+      "id": "ent-repo-notification",
+      "canonical_urn": "urn:cseo:repo:notification-service",
+      "entity_type": "Repository",
+      "name": "notification-service",
+      "description": "Customer notification and email dispatch microservice",
+      "properties": {"language": "typescript", "framework": "nestjs"}
+    },
+    {
+      "id": "ent-repover-order",
+      "canonical_urn": "urn:cseo:repover:order-service:v2.4.1",
+      "entity_type": "RepositoryVersion",
+      "name": "order-service:v2.4.1",
+      "description": "Release tag 2.4.1 with updated checkout schema",
+      "properties": {"git_tag": "v2.4.1", "branch": "release/2.4"}
+    },
+    {
+      "id": "ent-commit-order",
+      "canonical_urn": "urn:cseo:commit:order-service:7f8a9b",
+      "entity_type": "Commit",
+      "name": "7f8a9b4c02",
+      "description": "feat(checkout): add amount_cents field and enforce validation",
+      "properties": {"sha": "7f8a9b4c02df82a12903512e094672aaef319082", "author": "dev@enterprise.internal"}
+    },
+    {
+      "id": "ent-changeset-order",
+      "canonical_urn": "urn:cseo:changeset:pr-1042-checkout-v2",
+      "entity_type": "ChangeSet",
+      "name": "PR #1042 - Checkout Engine v2",
+      "description": "Pull request introducing currency validation and payment ledger integration",
+      "properties": {"pr_number": 1042, "target_branch": "main"}
+    },
+    {
+      "id": "ent-srv-auth",
+      "canonical_urn": "urn:cseo:service:auth-service",
+      "entity_type": "Service",
+      "name": "auth-service",
+      "description": "Central identity and user credential service",
+      "properties": {"tier": "Tier-1", "runtime": "Python 3.12", "port": 8081}
+    },
+    {
+      "id": "ent-srv-order",
+      "canonical_urn": "urn:cseo:service:order-service",
+      "entity_type": "Service",
+      "name": "order-service",
+      "description": "Order placement and customer checkout coordinator",
+      "properties": {"tier": "Tier-1", "runtime": "Python 3.12", "port": 8080}
+    },
+    {
+      "id": "ent-srv-payment",
+      "canonical_urn": "urn:cseo:service:payment-service",
+      "entity_type": "Service",
+      "name": "payment-service",
+      "description": "Payment authorization and settlement ledger engine",
+      "properties": {"tier": "Tier-1", "runtime": "Node.js 22", "port": 8082}
+    },
+    {
+      "id": "ent-srv-inventory",
+      "canonical_urn": "urn:cseo:service:inventory-service",
+      "entity_type": "Service",
+      "name": "inventory-service",
+      "description": "Warehouse stock levels and SKU reservation engine",
+      "properties": {"tier": "Tier-2", "runtime": "Python 3.12", "port": 8083}
+    },
+    {
+      "id": "ent-srv-notification",
+      "canonical_urn": "urn:cseo:service:notification-service",
+      "entity_type": "Service",
+      "name": "notification-service",
+      "description": "Event-driven asynchronous customer email and SMS delivery engine",
+      "properties": {"tier": "Tier-3", "runtime": "Node.js 22", "port": 8084}
+    },
+    {
+      "id": "ent-mod-order-orchestrator",
+      "canonical_urn": "urn:cseo:module:order-service:checkout_orchestrator",
+      "entity_type": "Module",
+      "name": "order_service.checkout_orchestrator",
+      "description": "Checkout controller module orchestrating downstream RPC calls",
+      "properties": {"file_path": "order_service/checkout_orchestrator.py"}
+    },
+    {
+      "id": "ent-mod-order-models",
+      "canonical_urn": "urn:cseo:module:order-service:models",
+      "entity_type": "Module",
+      "name": "order_service.models",
+      "description": "Pydantic and SQLAlchemy schema declarations for order domain",
+      "properties": {"file_path": "order_service/models.py"}
+    },
+    {
+      "id": "ent-func-order-checkout",
+      "canonical_urn": "urn:cseo:func:order-service:process_order_checkout",
+      "entity_type": "Function",
+      "name": "process_order_checkout",
+      "description": "Entrypoint function handling incoming checkout POST requests",
+      "properties": {"line_start": 32, "line_end": 75}
+    },
+    {
+      "id": "ent-func-payment-charge",
+      "canonical_urn": "urn:cseo:func:payment-service:charge_card",
+      "entity_type": "Function",
+      "name": "chargeCard",
+      "description": "Express handler routing payment charges to credit card gateway",
+      "properties": {"line_start": 44, "line_end": 88}
+    },
+    {
+      "id": "ent-ep-order-post",
+      "canonical_urn": "urn:cseo:endpoint:order-service:post_orders",
+      "entity_type": "APIEndpoint",
+      "name": "POST /api/v1/orders",
+      "description": "REST endpoint accepting new customer orders",
+      "properties": {"http_method": "POST", "path": "/api/v1/orders"}
+    },
+    {
+      "id": "ent-ep-payment-charge",
+      "canonical_urn": "urn:cseo:endpoint:payment-service:post_charge",
+      "entity_type": "APIEndpoint",
+      "name": "POST /api/v1/payments/charge",
+      "description": "REST endpoint processing monetary payment charges",
+      "properties": {"http_method": "POST", "path": "/api/v1/payments/charge"}
+    },
+    {
+      "id": "ent-ep-auth-user",
+      "canonical_urn": "urn:cseo:endpoint:auth-service:get_user",
+      "entity_type": "APIEndpoint",
+      "name": "GET /api/v1/users/{id}",
+      "description": "REST endpoint querying user identity profile and permissions",
+      "properties": {"http_method": "GET", "path": "/api/v1/users/{id}"}
+    },
+    {
+      "id": "ent-ep-inventory-reserve",
+      "canonical_urn": "urn:cseo:endpoint:inventory-service:post_reserve",
+      "entity_type": "APIEndpoint",
+      "name": "POST /api/v1/inventory/reserve",
+      "description": "REST endpoint reserving warehouse SKU quantities",
+      "properties": {"http_method": "POST", "path": "/api/v1/inventory/reserve"}
+    },
+    {
+      "id": "ent-field-order-id",
+      "canonical_urn": "urn:cseo:field:order-service:order_id",
+      "entity_type": "APIField",
+      "name": "order_id",
+      "description": "Primary order UUID string returned to checkout client",
+      "properties": {"data_type": "string", "format": "uuid"}
+    },
+    {
+      "id": "ent-field-order-customer-id",
+      "canonical_urn": "urn:cseo:field:order-service:customer_id",
+      "entity_type": "APIField",
+      "name": "customer_id",
+      "description": "Customer UUID identifier submitted with checkout payload",
+      "properties": {"data_type": "string", "format": "uuid"}
+    },
+    {
+      "id": "ent-field-payment-charge-cents",
+      "canonical_urn": "urn:cseo:field:payment-service:charge_cents",
+      "entity_type": "APIField",
+      "name": "charge_cents",
+      "description": "Monetary charge quantity in minor units passed to payment gateway",
+      "properties": {"data_type": "integer"}
+    },
+    {
+      "id": "ent-field-payment-account-uuid",
+      "canonical_urn": "urn:cseo:field:payment-service:account_uuid",
+      "entity_type": "APIField",
+      "name": "account_uuid",
+      "description": "Target ledger account identifier receiving the charge",
+      "properties": {"data_type": "string", "format": "uuid"}
+    },
+    {
+      "id": "ent-schema-order-created",
+      "canonical_urn": "urn:cseo:eventschema:OrderCreatedEvent",
+      "entity_type": "EventSchema",
+      "name": "OrderCreatedEvent",
+      "description": "AsyncAPI specification payload emitted when an order is created",
+      "properties": {"channel": "commerce.orders.v1.created", "contentType": "application/json"}
+    },
+    {
+      "id": "ent-schema-user-registered",
+      "canonical_urn": "urn:cseo:eventschema:UserRegisteredEvent",
+      "entity_type": "EventSchema",
+      "name": "UserRegisteredEvent",
+      "description": "AsyncAPI payload emitted when a new user registers with auth-service",
+      "properties": {"channel": "identity.users.v1.registered", "contentType": "application/json"}
+    },
+    {
+      "id": "ent-schema-payment-completed",
+      "canonical_urn": "urn:cseo:eventschema:PaymentCompletedEvent",
+      "entity_type": "EventSchema",
+      "name": "PaymentCompletedEvent",
+      "description": "AsyncAPI payload emitted when card charge completes successfully",
+      "properties": {"channel": "commerce.payments.v1.completed", "contentType": "application/json"}
+    },
+    {
+      "id": "ent-event-sample-order",
+      "canonical_urn": "urn:cseo:event:order-created-instance-001",
+      "entity_type": "Event",
+      "name": "order-created-msg-9021",
+      "description": "Specific Kafka record message ingested during runtime trace",
+      "properties": {"kafka_partition": 3, "kafka_offset": 88120}
+    },
+    {
+      "id": "ent-db-order",
+      "canonical_urn": "urn:cseo:db:order_postgres",
+      "entity_type": "Database",
+      "name": "order_postgres",
+      "description": "Dedicated PostgreSQL 17 database cluster for order-service",
+      "properties": {"engine": "PostgreSQL 17", "host": "order-db.internal"}
+    },
+    {
+      "id": "ent-db-payment",
+      "canonical_urn": "urn:cseo:db:payment_postgres",
+      "entity_type": "Database",
+      "name": "payment_postgres",
+      "description": "Dedicated PostgreSQL 17 database cluster for payment ledger",
+      "properties": {"engine": "PostgreSQL 17", "host": "payment-db.internal"}
+    },
+    {
+      "id": "ent-table-orders",
+      "canonical_urn": "urn:cseo:table:order_postgres:orders",
+      "entity_type": "DatabaseTable",
+      "name": "orders",
+      "description": "Canonical order persistence table",
+      "properties": {"schema": "public"}
+    },
+    {
+      "id": "ent-table-ledger",
+      "canonical_urn": "urn:cseo:table:payment_postgres:ledger_txns",
+      "entity_type": "DatabaseTable",
+      "name": "ledger_transactions",
+      "description": "Financial ledger audit transactions table",
+      "properties": {"schema": "public"}
+    },
+    {
+      "id": "ent-col-order-id",
+      "canonical_urn": "urn:cseo:col:order_postgres:orders:order_id",
+      "entity_type": "DatabaseColumn",
+      "name": "order_id",
+      "description": "Primary key UUID column for orders table",
+      "properties": {"data_type": "uuid", "is_primary_key": true}
+    },
+    {
+      "id": "ent-col-order-customer-id",
+      "canonical_urn": "urn:cseo:col:order_postgres:orders:customer_id",
+      "entity_type": "DatabaseColumn",
+      "name": "customer_id",
+      "description": "Foreign customer UUID column referencing buyer identity",
+      "properties": {"data_type": "uuid", "nullable": false}
+    },
+    {
+      "id": "ent-col-ledger-charge-cents",
+      "canonical_urn": "urn:cseo:col:payment_postgres:ledger_txns:charge_cents",
+      "entity_type": "DatabaseColumn",
+      "name": "charge_cents",
+      "description": "Integer minor units column tracking exact card charge",
+      "properties": {"data_type": "bigint", "nullable": false}
+    },
+    {
+      "id": "ent-trace-sample",
+      "canonical_urn": "urn:cseo:trace:checkout-trace-4bf92f3577b34da6a3ce929d0e0e4736",
+      "entity_type": "Trace",
+      "name": "trace-checkout-4bf92f",
+      "description": "Distributed OpenTelemetry trace spanning checkout flow",
+      "properties": {"trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "root_service": "order-service"}
+    },
+    {
+      "id": "ent-span-sample",
+      "canonical_urn": "urn:cseo:span:checkout-span-001",
+      "entity_type": "TraceSpan",
+      "name": "HTTP POST /api/v1/payments/charge",
+      "description": "HTTP client span from order-service calling payment-service",
+      "properties": {"span_id": "00f067aa0ba902b7", "parent_span_id": "5fb397be34d23b0f", "duration_ms": 42.5}
+    },
+    {
+      "id": "ent-dep-fastapi",
+      "canonical_urn": "urn:cseo:dep:fastapi-0.115",
+      "entity_type": "Dependency",
+      "name": "fastapi",
+      "description": "Upstream web framework package dependency",
+      "properties": {"version_constraint": ">=0.115.0", "ecosystem": "PyPI"}
+    },
+    {
+      "id": "ent-finding-sample",
+      "canonical_urn": "urn:cseo:finding:unnotified-currency-drift",
+      "entity_type": "Finding",
+      "name": "Unnotified Minor Units Field Drift",
+      "description": "Order-service introduced amount_cents without updating payment-service ledger contract",
+      "properties": {"severity": "HIGH", "category": "SEMANTIC_CONTRACT_VIOLATION"}
+    },
+    {
+      "id": "ent-evidence-span",
+      "canonical_urn": "urn:cseo:evidence:otel-span-log-8891",
+      "entity_type": "Evidence",
+      "name": "OTel Trace Span Evidence #8891",
+      "description": "Captured runtime HTTP span confirming live dependency",
+      "properties": {"trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "source": "OTEL_COLLECTOR"}
+    },
+    {
+      "id": "ent-evidence-ast",
+      "canonical_urn": "urn:cseo:evidence:ast-order-client-py-L45",
+      "entity_type": "Evidence",
+      "name": "AST Order Client Code Evidence L45",
+      "description": "Tree-sitter AST extraction of httpx.post call in order_service/client.py:45",
+      "properties": {"file": "order_service/client.py", "line": 45, "source": "AST_PARSER"}
+    },
+    {
+      "id": "ent-testcase-checkout",
+      "canonical_urn": "urn:cseo:test:test_checkout_end_to_end",
+      "entity_type": "TestCase",
+      "name": "test_checkout_end_to_end",
+      "description": "Integration test validating checkout and payment settlement",
+      "properties": {"test_framework": "pytest", "file": "tests/integration/test_checkout.py"}
+    },
+    {
+      "id": "ent-rec-regression",
+      "canonical_urn": "urn:cseo:rec:run-payment-regression-suite",
+      "entity_type": "Recommendation",
+      "name": "Execute Payment Regression Test Suite",
+      "description": "Targeted test execution recommended for payment-service contract consumers",
+      "properties": {"priority": "P1", "estimated_runtime_seconds": 12}
+    },
+    {
+      "id": "ent-concept-custid",
+      "canonical_urn": "urn:cseo:concept:CustomerIdentifier",
+      "entity_type": "BusinessConcept",
+      "name": "CustomerIdentifier",
+      "description": "Domain concept reference entity",
+      "properties": {"category": "Identifier"}
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel-01-calls",
+      "source_urn": "urn:cseo:service:order-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:endpoint:payment-service:post_charge",
+      "target_type": "APIEndpoint",
+      "rel_type": "CALLS",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "STATIC_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-02-calls-runtime",
+      "source_urn": "urn:cseo:service:payment-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:endpoint:auth-service:get_user",
+      "target_type": "APIEndpoint",
+      "rel_type": "CALLS",
+      "source_repo_version": "payment-service:v1.9.0",
+      "evidence_refs": ["urn:cseo:evidence:otel-span-log-8891"],
+      "provenance": "RUNTIME_OBSERVED",
+      "confidence": 0.95,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-03-imports",
+      "source_urn": "urn:cseo:module:order-service:checkout_orchestrator",
+      "source_type": "Module",
+      "target_urn": "urn:cseo:module:order-service:models",
+      "target_type": "Module",
+      "rel_type": "IMPORTS",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "STATIC_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-04-produces",
+      "source_urn": "urn:cseo:endpoint:order-service:post_orders",
+      "source_type": "APIEndpoint",
+      "target_urn": "urn:cseo:field:order-service:order_id",
+      "target_type": "APIField",
+      "rel_type": "PRODUCES",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "CONTRACT_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-05-consumes",
+      "source_urn": "urn:cseo:endpoint:order-service:post_orders",
+      "source_type": "APIEndpoint",
+      "target_urn": "urn:cseo:field:order-service:customer_id",
+      "target_type": "APIField",
+      "rel_type": "CONSUMES",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "CONTRACT_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-06-maps-to-synonym",
+      "source_urn": "urn:cseo:field:order-service:customer_id",
+      "source_type": "APIField",
+      "target_urn": "urn:cseo:concept:CustomerIdentifier",
+      "target_type": "BusinessConcept",
+      "rel_type": "MAPS_TO",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "ONTOLOGY_INFERRED",
+      "confidence": 0.88,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-07-reads",
+      "source_urn": "urn:cseo:service:order-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:table:order_postgres:orders",
+      "target_type": "DatabaseTable",
+      "rel_type": "READS",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "STATIC_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-08-writes",
+      "source_urn": "urn:cseo:service:order-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:table:order_postgres:orders",
+      "target_type": "DatabaseTable",
+      "rel_type": "WRITES",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "STATIC_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-09-persists-as",
+      "source_urn": "urn:cseo:field:order-service:order_id",
+      "source_type": "APIField",
+      "target_urn": "urn:cseo:col:order_postgres:orders:order_id",
+      "target_type": "DatabaseColumn",
+      "rel_type": "PERSISTS_AS",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "STATIC_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-10-publishes",
+      "source_urn": "urn:cseo:service:order-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:eventschema:OrderCreatedEvent",
+      "target_type": "EventSchema",
+      "rel_type": "PUBLISHES",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "CONTRACT_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-11-subscribes-to",
+      "source_urn": "urn:cseo:service:inventory-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:eventschema:OrderCreatedEvent",
+      "target_type": "EventSchema",
+      "rel_type": "SUBSCRIBES_TO",
+      "source_repo_version": "inventory-service:v3.1.0",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "CONTRACT_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-12-subscribes-notification",
+      "source_urn": "urn:cseo:service:notification-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:eventschema:OrderCreatedEvent",
+      "target_type": "EventSchema",
+      "rel_type": "SUBSCRIBES_TO",
+      "source_repo_version": "notification-service:v1.2.0",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "CONTRACT_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-13-part-of-workflow",
+      "source_urn": "urn:cseo:service:order-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:workflow:CheckoutAndFulfillOrder",
+      "target_type": "Workflow",
+      "rel_type": "PART_OF_WORKFLOW",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "STATIC_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-14-owned-by",
+      "source_urn": "urn:cseo:service:order-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:owner:CheckoutSquad",
+      "target_type": "Owner",
+      "rel_type": "OWNED_BY",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "HUMAN_CERTIFIED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-15-requires-permission",
+      "source_urn": "urn:cseo:endpoint:order-service:post_orders",
+      "source_type": "APIEndpoint",
+      "target_urn": "urn:cseo:perm:orders:write",
+      "target_type": "Permission",
+      "rel_type": "REQUIRES_PERMISSION",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "STATIC_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-16-depends-on",
+      "source_urn": "urn:cseo:service:order-service",
+      "source_type": "Service",
+      "target_urn": "urn:cseo:service:payment-service",
+      "target_type": "Service",
+      "rel_type": "DEPENDS_ON",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "STATIC_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "rel-17-transforms-into",
+      "source_urn": "urn:cseo:field:order-service:customer_id",
+      "source_type": "APIField",
+      "target_urn": "urn:cseo:field:payment-service:account_uuid",
+      "target_type": "APIField",
+      "rel_type": "TRANSFORMS_INTO",
+      "source_repo_version": "order-service:v2.4.1",
+      "evidence_refs": ["urn:cseo:evidence:ast-order-client-py-L45"],
+      "provenance": "STATIC_CONFIRMED",
+      "confidence": 1.0,
+      "first_observed_at": "2026-11-10T12:00:00Z",
+      "last_observed_at": "2026-11-10T12:00:00Z",
+      "valid_from": "2026-11-10T12:00:00Z",
+      "status": "ACTIVE"
+    }
+  ]
+}

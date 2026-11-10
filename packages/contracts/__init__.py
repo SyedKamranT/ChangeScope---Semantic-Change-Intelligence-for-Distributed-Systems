@@ -11,7 +11,9 @@ from packages.contracts.models import (
     ParsedContractSummary,
     RuleViolation,
 )
+from packages.contracts.ontology_validator import OntologyValidator
 from packages.contracts.openapi_parser import OpenAPIParser
+from packages.contracts.ontology_validator import OntologyValidator
 from packages.contracts.rule_engine import SemanticRuleEngine
 
 __all__ = [
@@ -21,6 +23,7 @@ __all__ = [
     "DDLParser",
     "DDLEvent",
     "SemanticRuleEngine",
+    "OntologyValidator",
     "ContractType",
     "RuleViolation",
     "ConsumerContractProfile",

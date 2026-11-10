@@ -1,0 +1,349 @@
+{
+  "@context": {
+    "cseo": "https://changescope.io/ontology/cseo#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "sh": "http://www.w3.org/ns/shacl#"
+  },
+  "@graph": [
+    {
+      "@id": "cseo:SoftwareOntology",
+      "@type": "owl:Ontology",
+      "rdfs:label": "ChangeScope Software Engineering Ontology (CSEO)",
+      "owl:versionInfo": "1.0.0",
+      "rdfs:comment": "Domain-specific ontology for distributed software systems, semantic contract changes, and blast radius reasoning."
+    },
+    {
+      "@id": "cseo:Organization",
+      "@type": "owl:Class",
+      "rdfs:label": "Organization",
+      "rdfs:comment": "Root enterprise multi-tenant account entity."
+    },
+    {
+      "@id": "cseo:Workspace",
+      "@type": "owl:Class",
+      "rdfs:label": "Workspace",
+      "rdfs:comment": "Logical grouping of monitored repositories."
+    },
+    {
+      "@id": "cseo:Repository",
+      "@type": "owl:Class",
+      "rdfs:label": "Repository",
+      "rdfs:comment": "Source code repository under version control."
+    },
+    {
+      "@id": "cseo:RepositoryVersion",
+      "@type": "owl:Class",
+      "rdfs:label": "RepositoryVersion",
+      "rdfs:comment": "Immutable snapshot or semantic release version of a repository."
+    },
+    {
+      "@id": "cseo:Commit",
+      "@type": "owl:Class",
+      "rdfs:label": "Commit",
+      "rdfs:comment": "Git commit object containing cryptographic SHA and timestamp."
+    },
+    {
+      "@id": "cseo:ChangeSet",
+      "@type": "owl:Class",
+      "rdfs:label": "ChangeSet",
+      "rdfs:comment": "Set of diffs, modified files, and code changes introduced in a Pull Request."
+    },
+    {
+      "@id": "cseo:Service",
+      "@type": "owl:Class",
+      "rdfs:label": "Service",
+      "rdfs:comment": "Deployable microservice, application, or background daemon."
+    },
+    {
+      "@id": "cseo:Module",
+      "@type": "owl:Class",
+      "rdfs:label": "Module",
+      "rdfs:comment": "Individual code file or translation unit."
+    },
+    {
+      "@id": "cseo:Function",
+      "@type": "owl:Class",
+      "rdfs:label": "Function",
+      "rdfs:comment": "Method, function declaration, or route handler."
+    },
+    {
+      "@id": "cseo:APIEndpoint",
+      "@type": "owl:Class",
+      "rdfs:label": "APIEndpoint",
+      "rdfs:comment": "Exposed HTTP/REST or RPC network endpoint."
+    },
+    {
+      "@id": "cseo:APIField",
+      "@type": "owl:Class",
+      "rdfs:label": "APIField",
+      "rdfs:comment": "Individual field or parameter within an API schema or payload."
+    },
+    {
+      "@id": "cseo:Event",
+      "@type": "owl:Class",
+      "rdfs:label": "Event",
+      "rdfs:comment": "Asynchronous domain message emitted across an event broker."
+    },
+    {
+      "@id": "cseo:EventSchema",
+      "@type": "owl:Class",
+      "rdfs:label": "EventSchema",
+      "rdfs:comment": "AsyncAPI or Avro/JSON Schema governing an event payload structure."
+    },
+    {
+      "@id": "cseo:Database",
+      "@type": "owl:Class",
+      "rdfs:label": "Database",
+      "rdfs:comment": "Physical or logical datastore (PostgreSQL, MySQL, Redis, DynamoDB)."
+    },
+    {
+      "@id": "cseo:DatabaseTable",
+      "@type": "owl:Class",
+      "rdfs:label": "DatabaseTable",
+      "rdfs:comment": "Relational table or collection within a database."
+    },
+    {
+      "@id": "cseo:DatabaseColumn",
+      "@type": "owl:Class",
+      "rdfs:label": "DatabaseColumn",
+      "rdfs:comment": "Column or attribute within a database table."
+    },
+    {
+      "@id": "cseo:BusinessConcept",
+      "@type": "owl:Class",
+      "rdfs:label": "BusinessConcept",
+      "rdfs:comment": "Canonical domain concept (e.g. MonetaryValue, Customer, Transaction, Account)."
+    },
+    {
+      "@id": "cseo:MonetaryValue",
+      "@type": "owl:Class",
+      "rdfs:subClassOf": "cseo:BusinessConcept",
+      "rdfs:label": "MonetaryValue",
+      "rdfs:comment": "Currency code, amount, and scale semantics."
+    },
+    {
+      "@id": "cseo:Identifier",
+      "@type": "owl:Class",
+      "rdfs:subClassOf": "cseo:BusinessConcept",
+      "rdfs:label": "Identifier",
+      "rdfs:comment": "Unique identity string or UUID."
+    },
+    {
+      "@id": "cseo:Timestamp",
+      "@type": "owl:Class",
+      "rdfs:subClassOf": "cseo:BusinessConcept",
+      "rdfs:label": "Timestamp",
+      "rdfs:comment": "Temporal instant representation."
+    },
+    {
+      "@id": "cseo:Status",
+      "@type": "owl:Class",
+      "rdfs:subClassOf": "cseo:BusinessConcept",
+      "rdfs:label": "Status",
+      "rdfs:comment": "Finite state machine status enumeration."
+    },
+    {
+      "@id": "cseo:MeasurementUnit",
+      "@type": "owl:Class",
+      "rdfs:subClassOf": "cseo:BusinessConcept",
+      "rdfs:label": "MeasurementUnit",
+      "rdfs:comment": "Standard measurement unit definition."
+    },
+    {
+      "@id": "cseo:Customer",
+      "@type": "owl:Class",
+      "rdfs:subClassOf": "cseo:BusinessConcept",
+      "rdfs:label": "Customer",
+      "rdfs:comment": "Customer identity entity."
+    },
+    {
+      "@id": "cseo:Transaction",
+      "@type": "owl:Class",
+      "rdfs:subClassOf": "cseo:BusinessConcept",
+      "rdfs:label": "Transaction",
+      "rdfs:comment": "Idempotent business execution unit."
+    },
+    {
+      "@id": "cseo:Account",
+      "@type": "owl:Class",
+      "rdfs:subClassOf": "cseo:BusinessConcept",
+      "rdfs:label": "Account",
+      "rdfs:comment": "Bounded context financial, identity, or CRM account entity."
+    },
+    {
+      "@id": "cseo:Resource",
+      "@type": "owl:Class",
+      "rdfs:subClassOf": "cseo:BusinessConcept",
+      "rdfs:label": "Resource",
+      "rdfs:comment": "Protected system asset or domain entity."
+    },
+    {
+      "@id": "cseo:Workflow",
+      "@type": "owl:Class",
+      "rdfs:label": "Workflow",
+      "rdfs:comment": "End-to-end multi-step business process or transaction flow."
+    },
+    {
+      "@id": "cseo:Permission",
+      "@type": "owl:Class",
+      "rdfs:label": "Permission",
+      "rdfs:comment": "Authorization scope required to access a protected component."
+    },
+    {
+      "@id": "cseo:Owner",
+      "@type": "owl:Class",
+      "rdfs:label": "Owner",
+      "rdfs:comment": "Engineering team or human owner of a service, repo, or datastore."
+    },
+    {
+      "@id": "cseo:Trace",
+      "@type": "owl:Class",
+      "rdfs:label": "Trace",
+      "rdfs:comment": "Distributed OpenTelemetry execution trace across microservices."
+    },
+    {
+      "@id": "cseo:TraceSpan",
+      "@type": "owl:Class",
+      "rdfs:label": "TraceSpan",
+      "rdfs:comment": "Individual timed execution unit within a distributed trace."
+    },
+    {
+      "@id": "cseo:Dependency",
+      "@type": "owl:Class",
+      "rdfs:label": "Dependency",
+      "rdfs:comment": "Declared or empirical coupling between two technical entities."
+    },
+    {
+      "@id": "cseo:Finding",
+      "@type": "owl:Class",
+      "rdfs:label": "Finding",
+      "rdfs:comment": "Semantic change violation or architectural hazard."
+    },
+    {
+      "@id": "cseo:Evidence",
+      "@type": "owl:Class",
+      "rdfs:label": "Evidence",
+      "rdfs:comment": "Traceable ground truth (AST node, Span ID, Spec line) supporting a finding."
+    },
+    {
+      "@id": "cseo:TestCase",
+      "@type": "owl:Class",
+      "rdfs:label": "TestCase",
+      "rdfs:comment": "Recommended targeted regression test covering an impacted surface."
+    },
+    {
+      "@id": "cseo:Recommendation",
+      "@type": "owl:Class",
+      "rdfs:label": "Recommendation",
+      "rdfs:comment": "Actionable mitigation advice for safe PR rollout."
+    },
+    {
+      "@id": "cseo:calls",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "calls",
+      "rdfs:domain": "cseo:Function",
+      "rdfs:range": "cseo:APIEndpoint"
+    },
+    {
+      "@id": "cseo:imports",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "imports",
+      "rdfs:domain": "cseo:Module",
+      "rdfs:range": "cseo:Module"
+    },
+    {
+      "@id": "cseo:produces",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "produces",
+      "rdfs:domain": "cseo:APIEndpoint",
+      "rdfs:range": "cseo:APIField"
+    },
+    {
+      "@id": "cseo:consumes",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "consumes",
+      "rdfs:domain": "cseo:APIEndpoint",
+      "rdfs:range": "cseo:APIField"
+    },
+    {
+      "@id": "cseo:mapsTo",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "mapsTo",
+      "rdfs:domain": "cseo:APIField",
+      "rdfs:range": "cseo:BusinessConcept"
+    },
+    {
+      "@id": "cseo:reads",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "reads",
+      "rdfs:domain": "cseo:Function",
+      "rdfs:range": "cseo:DatabaseColumn"
+    },
+    {
+      "@id": "cseo:writes",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "writes",
+      "rdfs:domain": "cseo:Function",
+      "rdfs:range": "cseo:DatabaseColumn"
+    },
+    {
+      "@id": "cseo:persistsAs",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "persistsAs",
+      "rdfs:domain": "cseo:APIField",
+      "rdfs:range": "cseo:DatabaseColumn"
+    },
+    {
+      "@id": "cseo:publishes",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "publishes",
+      "rdfs:domain": "cseo:Service",
+      "rdfs:range": "cseo:EventSchema"
+    },
+    {
+      "@id": "cseo:subscribesTo",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "subscribesTo",
+      "rdfs:domain": "cseo:Service",
+      "rdfs:range": "cseo:EventSchema"
+    },
+    {
+      "@id": "cseo:partOfWorkflow",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "partOfWorkflow",
+      "rdfs:domain": "cseo:APIEndpoint",
+      "rdfs:range": "cseo:Workflow"
+    },
+    {
+      "@id": "cseo:ownedBy",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "ownedBy",
+      "rdfs:domain": "cseo:Service",
+      "rdfs:range": "cseo:Owner"
+    },
+    {
+      "@id": "cseo:requiresPermission",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "requiresPermission",
+      "rdfs:domain": "cseo:APIEndpoint",
+      "rdfs:range": "cseo:Permission"
+    },
+    {
+      "@id": "cseo:dependsOn",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "dependsOn",
+      "rdfs:domain": "cseo:Service",
+      "rdfs:range": "cseo:Service"
+    },
+    {
+      "@id": "cseo:transformsInto",
+      "@type": "owl:ObjectProperty",
+      "rdfs:label": "transformsInto",
+      "rdfs:domain": "cseo:APIField",
+      "rdfs:range": "cseo:APIField"
+    }
+  ]
+}
