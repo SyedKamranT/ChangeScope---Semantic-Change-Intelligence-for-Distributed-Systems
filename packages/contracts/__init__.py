@@ -13,7 +13,6 @@ from packages.contracts.models import (
 )
 from packages.contracts.ontology_validator import OntologyValidator
 from packages.contracts.openapi_parser import OpenAPIParser
-from packages.contracts.ontology_validator import OntologyValidator
 from packages.contracts.rule_engine import SemanticRuleEngine
 
 __all__ = [

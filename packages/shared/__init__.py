@@ -1,5 +1,12 @@
 """ChangeScope Shared Kernel Package."""
 
+from packages.shared.ontology import (
+    LocalOntologyProvider,
+    NvidiaAutoOntologyProvider,
+    OntologyProvider,
+    OssieSerializer,
+    get_ontology_provider,
+)
 from packages.shared.ontology_governance import OntologyGovernanceManager
 from packages.shared.ontology_models import (
     BusinessConceptEntity,
@@ -32,4 +39,9 @@ __all__ = [
     "CandidateReviewStatus",
     "SemanticConceptCategory",
     "OntologyGovernanceManager",
+    "OntologyProvider",
+    "LocalOntologyProvider",
+    "NvidiaAutoOntologyProvider",
+    "OssieSerializer",
+    "get_ontology_provider",
 ]

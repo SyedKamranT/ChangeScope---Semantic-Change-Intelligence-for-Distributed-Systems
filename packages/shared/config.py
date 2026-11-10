@@ -56,6 +56,13 @@ class AppSettings(BaseSettings):
     MAX_BLAST_RADIUS_DEPTH: int = Field(default=5, ge=1, le=10)
     SCAN_TIMEOUT_SECONDS: int = Field(default=60, ge=10, le=300)
 
+    # NVIDIA Auto-Ontology Integration Layer
+    ONTOLOGY_PROVIDER: Literal["local", "nvidia"] = "local"
+    NVIDIA_AUTO_ONTOLOGY_URL: str | None = None
+    NVIDIA_AUTO_ONTOLOGY_API_KEY: str | None = None
+    NVIDIA_AUTO_ONTOLOGY_TIMEOUT_SECONDS: float = Field(default=10.0, ge=1.0, le=60.0)
+    NVIDIA_AUTO_ONTOLOGY_MAX_RETRIES: int = Field(default=3, ge=1, le=5)
+
     @field_validator("JWT_SECRET")
     @classmethod
     def validate_jwt_secret_length(cls, v: str) -> str:
