@@ -1,0 +1,4 @@
+# Codeowners for Payment Gateway
+* @platform-core @lead-architect
+/src/ @payment-squad
+/migrations/ @data-platform-leads

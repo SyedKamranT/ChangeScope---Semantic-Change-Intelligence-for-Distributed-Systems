@@ -93,6 +93,12 @@ class InvalidProvenanceError(ChangeScopeBaseError):
     title = "Invalid Provenance Error"
 
 
+class SecurityViolationError(ChangeScopeBaseError):
+    status_code = 400
+    error_type = "https://changescope.io/errors/security-violation"
+    title = "Security Invariant Violation"
+
+
 def problem_detail_response(
     exc: ChangeScopeBaseError,
     instance: str | None = None,

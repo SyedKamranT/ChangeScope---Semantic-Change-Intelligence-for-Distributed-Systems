@@ -1,5 +1,16 @@
 """ChangeScope Shared Kernel Package."""
 
+from packages.shared.ingestion import (
+    ArchiveSource,
+    CodebaseAnalyzer,
+    GitHubPRIngestor,
+    GitHubRepoSource,
+    IngestionArtifact,
+    IngestionPipeline,
+    IngestionSourceType,
+    LocalGitSource,
+    RepoSafetyGuard,
+)
 from packages.shared.ontology import (
     LocalOntologyProvider,
     NvidiaAutoOntologyProvider,
@@ -44,4 +55,13 @@ __all__ = [
     "NvidiaAutoOntologyProvider",
     "OssieSerializer",
     "get_ontology_provider",
+    "RepoSafetyGuard",
+    "IngestionSourceType",
+    "IngestionArtifact",
+    "CodebaseAnalyzer",
+    "LocalGitSource",
+    "ArchiveSource",
+    "GitHubRepoSource",
+    "GitHubPRIngestor",
+    "IngestionPipeline",
 ]

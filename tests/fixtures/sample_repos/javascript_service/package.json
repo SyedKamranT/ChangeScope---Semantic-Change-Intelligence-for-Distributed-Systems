@@ -1,0 +1,8 @@
+{
+  "name": "telemetry-dispatcher",
+  "version": "0.9.2",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}

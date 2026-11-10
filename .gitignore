@@ -150,6 +150,8 @@ tmp/
 /tmp/
 /tmp/workspaces/
 /tmp/changescope_workspaces/
+data/
+/data/
 scratch/
 .changescope_cache/
 *.log

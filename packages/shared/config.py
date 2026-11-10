@@ -63,6 +63,13 @@ class AppSettings(BaseSettings):
     NVIDIA_AUTO_ONTOLOGY_TIMEOUT_SECONDS: float = Field(default=10.0, ge=1.0, le=60.0)
     NVIDIA_AUTO_ONTOLOGY_MAX_RETRIES: int = Field(default=3, ge=1, le=5)
 
+    # Repository Ingestion & Storage Settings
+    STORAGE_BASE_DIR: str = "./data/storage"
+    MAX_ARCHIVE_SIZE_BYTES: int = Field(default=100 * 1024 * 1024, ge=1024 * 1024)
+    MAX_FILE_SIZE_BYTES: int = Field(default=10 * 1024 * 1024, ge=1024)
+    MAX_ARCHIVE_FILE_COUNT: int = Field(default=10000, ge=10, le=100000)
+    ALLOWED_GIT_HOSTS: list[str] = Field(default_factory=lambda: ["github.com", "gitlab.com", "bitbucket.org"])
+
     @field_validator("JWT_SECRET")
     @classmethod
     def validate_jwt_secret_length(cls, v: str) -> str:
