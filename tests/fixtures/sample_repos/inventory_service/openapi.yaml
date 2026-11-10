@@ -1,0 +1,47 @@
+openapi: 3.0.3
+info:
+  title: Inventory Service API
+  version: 1.1.0
+paths:
+  /api/v1/items:
+    post:
+      summary: Register a new item
+      operationId: createItem
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryItem'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+components:
+  schemas:
+    InventoryItem:
+      type: object
+      required:
+        - item_id
+        - sku
+        - status
+      properties:
+        item_id:
+          type: string
+        sku:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, AVAILABLE] # Narrowed: DISCONTINUED removed
+        warehouse_zone:
+          type: string
+          default: DEFAULT
+    ItemResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        item_id:
+          type: string

@@ -1,0 +1,114 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: changescope-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: changescope
+      POSTGRES_USER: changescope
+      POSTGRES_PASSWORD: changescope_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U changescope -d changescope"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: changescope-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5.20.0-community
+    container_name: changescope-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/changescope_password
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      NEO4J_dbms_memory_heap_initial__size: "512m"
+      NEO4J_dbms_memory_heap_max__size: "1G"
+    ports:
+      - "7474:7474" # Neo4j Browser HTTP
+      - "7687:7687" # Bolt protocol
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    container_name: changescope-api
+    restart: unless-stopped
+    environment:
+      CHANGESCOPE_ENVIRONMENT: local
+      CHANGESCOPE_DATABASE_URL: postgresql+asyncpg://changescope:changescope_password@postgres:5432/changescope
+      CHANGESCOPE_REDIS_URL: redis://redis:6379/0
+      CHANGESCOPE_NEO4J_URI: bolt://neo4j:7687
+      CHANGESCOPE_NEO4J_USER: neo4j
+      CHANGESCOPE_NEO4J_PASSWORD: changescope_password
+      CHANGESCOPE_JWT_SECRET: changescope_production_secret_key_at_least_32_bytes_long_1234
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
+    container_name: changescope-worker
+    restart: unless-stopped
+    environment:
+      CHANGESCOPE_ENVIRONMENT: local
+      CHANGESCOPE_DATABASE_URL: postgresql+asyncpg://changescope:changescope_password@postgres:5432/changescope
+      CHANGESCOPE_REDIS_URL: redis://redis:6379/0
+      CHANGESCOPE_NEO4J_URI: bolt://neo4j:7687
+      CHANGESCOPE_NEO4J_USER: neo4j
+      CHANGESCOPE_NEO4J_PASSWORD: changescope_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    container_name: changescope-web
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  neo4j_data:

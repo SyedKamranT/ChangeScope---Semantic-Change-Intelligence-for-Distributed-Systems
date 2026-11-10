@@ -1,0 +1,156 @@
+# ==============================================================================
+# ChangeScope Production Monorepo .gitignore
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Python & Virtual Environments
+# ------------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ------------------------------------------------------------------------------
+# 2. Type Checkers & Linters Cache
+# ------------------------------------------------------------------------------
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# ------------------------------------------------------------------------------
+# 3. Automated Testing & Code Coverage
+# ------------------------------------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+coverage.xml
+nosetests.xml
+benchmark_results/
+
+# ------------------------------------------------------------------------------
+# 4. Node.js, pnpm & Frontend Build Artifacts
+# ------------------------------------------------------------------------------
+node_modules/
+*/node_modules/
+apps/web/node_modules/
+frontend/node_modules/
+apps/web/dist/
+frontend/dist/
+apps/web/.vite/
+frontend/.vite/
+.pnpm-store/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ------------------------------------------------------------------------------
+# 5. Databases, Stores & Transaction Journals
+# ------------------------------------------------------------------------------
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+changescope.db*
+dump.rdb
+
+# ------------------------------------------------------------------------------
+# 6. Celery Workers & Task Queues
+# ------------------------------------------------------------------------------
+celerybeat-schedule*
+celerybeat.pid
+
+# ------------------------------------------------------------------------------
+# 7. Environment Variables, Secrets & Certificates
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pkcs12
+*.pfx
+*.p12
+*.crt
+*.cert
+secrets/
+private_keys/
+
+# ------------------------------------------------------------------------------
+# 8. Local Docker & Infrastructure Volumes
+# ------------------------------------------------------------------------------
+docker-compose.override.yml
+infrastructure/docker/data/
+postgres_data/
+redis_data/
+neo4j_data/
+
+# ------------------------------------------------------------------------------
+# 9. Operating System & Editor Artifacts
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# Editors
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+*.bak
+
+# ------------------------------------------------------------------------------
+# 10. Temporary & Scratch Files
+# ------------------------------------------------------------------------------
+tmp/
+/tmp/
+/tmp/workspaces/
+/tmp/changescope_workspaces/
+scratch/
+.changescope_cache/
+*.log
+logs/

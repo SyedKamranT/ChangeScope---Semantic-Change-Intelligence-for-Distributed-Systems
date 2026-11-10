@@ -1,0 +1,1 @@
+"""ChangeScope Applications Namespace."""

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ChangeScopeASTToGraphMapping",
+  "version": "1.0.0",
+  "mappings": [
+    {
+      "language": "python",
+      "frameworks": ["fastapi", "flask", "django"],
+      "ast_node": "function_definition",
+      "decorator_patterns": [
+        "app.get",
+        "app.post",
+        "app.put",
+        "app.delete",
+        "app.patch",
+        "router.get",
+        "router.post"
+      ],
+      "graph_projection": {
+        "node_label": "Endpoint",
+        "properties": {
+          "id": "hash(tenant_id, service_id, method, path_template)",
+          "path_template": "decorator.arg[0]",
+          "method": "decorator.name.split('.')[-1].upper()",
+          "handler_name": "node.name",
+          "provenance": "AST_STATIC",
+          "confidence": 1.0
+        },
+        "edge": {
+          "type": "EXPOSES",
+          "from": "Service",
+          "to": "Endpoint"
+        }
+      }
+    },
+    {
+      "language": "typescript",
+      "frameworks": ["express", "nest"],
+      "ast_node": "call_expression",
+      "patterns": ["app.get", "app.post", "app.put", "app.delete", "router.get", "router.post"],
+      "graph_projection": {
+        "node_label": "Endpoint",
+        "properties": {
+          "id": "hash(tenant_id, service_id, method, path_template)",
+          "path_template": "arguments[0].value",
+          "method": "callee.property.name.upper()",
+          "provenance": "AST_STATIC",
+          "confidence": 1.0
+        },
+        "edge": {
+          "type": "EXPOSES",
+          "from": "Service",
+          "to": "Endpoint"
+        }
+      }
+    },
+    {
+      "language": "sql",
+      "frameworks": ["alembic", "flyway", "liquibase"],
+      "ast_node": "AlterTable",
+      "graph_projection": {
+        "node_label": "DatabaseTable",
+        "properties": {
+          "id": "hash(tenant_id, table_name)",
+          "table_name": "stmt.this.name",
+          "provenance": "SQL_MIGRATION",
+          "confidence": 1.0
+        },
+        "edge": {
+          "type": "MUTATES_TABLE",
+          "from": "MigrationRun",
+          "to": "DatabaseTable"
+        }
+      }
+    }
+  ]
+}

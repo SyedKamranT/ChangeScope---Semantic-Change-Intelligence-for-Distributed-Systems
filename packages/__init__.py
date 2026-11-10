@@ -1,0 +1,1 @@
+"""ChangeScope Packages Namespace."""

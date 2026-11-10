@@ -1,0 +1,1 @@
+"""ChangeScope API Gateway Application."""

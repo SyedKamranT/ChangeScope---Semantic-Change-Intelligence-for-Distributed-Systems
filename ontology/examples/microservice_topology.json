@@ -1,0 +1,79 @@
+{
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "workspace_id": "workspace-order-fulfillment",
+  "generated_at": "2026-11-10T12:00:00Z",
+  "services": [
+    {
+      "id": "srv-order-service",
+      "name": "order-service",
+      "language": "python",
+      "tier": "tier-1",
+      "repository": "https://github.com/org/order-service",
+      "endpoints": [
+        {
+          "id": "ep-create-order",
+          "method": "POST",
+          "path_template": "/api/v1/orders",
+          "summary": "Create new customer order",
+          "contract_id": "cnt-orders-v1"
+        }
+      ]
+    },
+    {
+      "id": "srv-payment-service",
+      "name": "payment-service",
+      "language": "typescript",
+      "tier": "tier-1",
+      "repository": "https://github.com/org/payment-service",
+      "endpoints": [
+        {
+          "id": "ep-process-payment",
+          "method": "POST",
+          "path_template": "/api/v1/payments",
+          "summary": "Process credit card payment",
+          "contract_id": "cnt-payments-v1"
+        }
+      ]
+    },
+    {
+      "id": "srv-inventory-service",
+      "name": "inventory-service",
+      "language": "python",
+      "tier": "tier-2",
+      "repository": "https://github.com/org/inventory-service",
+      "endpoints": [
+        {
+          "id": "ep-reserve-stock",
+          "method": "POST",
+          "path_template": "/api/v1/inventory/reserve",
+          "summary": "Reserve stock items",
+          "contract_id": "cnt-inventory-v1"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "type": "CONSUMES_ENDPOINT",
+      "source_service_id": "srv-order-service",
+      "target_endpoint_id": "ep-process-payment",
+      "provenance": "OTEL_RUNTIME",
+      "confidence": 0.98,
+      "metrics": {
+        "call_rate_rpm": 1420.5,
+        "p99_latency_ms": 42.1
+      }
+    },
+    {
+      "type": "CONSUMES_ENDPOINT",
+      "source_service_id": "srv-order-service",
+      "target_endpoint_id": "ep-reserve-stock",
+      "provenance": "AST_STATIC",
+      "confidence": 1.0,
+      "metadata": {
+        "call_site": "services/checkout.py:114",
+        "client_library": "httpx"
+      }
+    }
+  ]
+}
