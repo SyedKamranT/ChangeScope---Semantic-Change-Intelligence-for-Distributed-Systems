@@ -22,7 +22,16 @@ from packages.shared.errors import (
     problem_detail_response,
 )
 from packages.shared.logger import configure_structured_logging, logger
-from packages.shared.models import OutboxEvent, Repository, ScanRun, Tenant, Violation, Workspace
+from packages.shared.models import (
+    OutboxEvent,
+    Repository,
+    RuntimeDependency,
+    RuntimeTraceSpan,
+    ScanRun,
+    Tenant,
+    Violation,
+    Workspace,
+)
 from packages.shared.security import (
     CorrelationIdMiddleware,
     SecurityContext,
@@ -31,6 +40,13 @@ from packages.shared.security import (
     get_correlation_id,
     get_current_security_context,
     require_role,
+)
+from packages.shared.telemetry import (
+    DependencyBuilder,
+    ObservedServiceDependency,
+    ProtocolType,
+    RuntimeCorrelationEngine,
+    SpanExtractor,
 )
 
 
@@ -535,3 +551,256 @@ async def get_scan_violations(
         }
         for v in violations
     ]
+
+
+# --- OpenTelemetry OTLP Ingestion & Runtime Dependency Endpoints ---
+
+
+@app.post("/v1/traces", tags=["Telemetry"], status_code=status.HTTP_200_OK)
+async def ingest_otlp_traces(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Standard OpenTelemetry Protocol (OTLP/HTTP) trace ingestion endpoint.
+
+    Accepts standard OTLP JSON (resourceSpans). Scrubs credentials and PII in-memory,
+    enforces tenant isolation from X-Tenant-ID header or resource attribute,
+    buffers normalized spans, and updates observed runtime dependencies.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    # Resolve tenant from header or fallback
+    header_tenant = request.headers.get("X-Tenant-ID") or request.headers.get("x-tenant-id")
+    tenant_id = header_tenant or "tenant-default"
+
+    # Extract & scrub spans
+    spans = SpanExtractor.extract_spans(body)
+    if not spans:
+        return {"status": "ACCEPTED", "spans_ingested": 0, "dependencies_observed": 0}
+
+    # If spans specify changescope.tenant_id in resource attributes, honor it
+    first_res_tenant = spans[0].attributes.get("changescope.tenant_id") or spans[0].attributes.get("tenant.id")
+    if first_res_tenant and not header_tenant:
+        tenant_id = str(first_res_tenant)
+
+    # 1. Buffer spans for audit and trace evidence
+    for s in spans:
+        span_row = RuntimeTraceSpan(
+            tenant_id=tenant_id,
+            trace_id=s.trace_id,
+            span_id=s.span_id,
+            parent_span_id=s.parent_span_id,
+            service_name=s.service_name,
+            name=s.name,
+            kind=s.kind.value,
+            status_code=s.status_code,
+            duration_ms=s.duration_ms,
+            environment=s.environment,
+            attributes=s.attributes,
+        )
+        db.add(span_row)
+
+    # 2. Extract and upsert runtime dependencies
+    env = spans[0].environment if spans else "production"
+    observed_deps = DependencyBuilder.extract_dependencies(spans, environment=env)
+
+    for dep in observed_deps:
+        stmt = select(RuntimeDependency).where(
+            RuntimeDependency.tenant_id == tenant_id,
+            RuntimeDependency.caller_service_name == dep.caller_service_name,
+            RuntimeDependency.callee_service_name == dep.callee_service_name,
+            RuntimeDependency.http_route == dep.operation_or_route,
+            RuntimeDependency.protocol == dep.protocol.value,
+            RuntimeDependency.environment == dep.environment,
+        )
+        existing = (await db.execute(stmt)).scalar_one_or_none()
+        if existing:
+            existing.call_count_7d += dep.call_count
+            existing.error_count += dep.error_count
+            existing.p95_latency_ms = dep.p95_latency_ms
+            existing.last_observed_at = dep.last_observed_at
+            existing.exemplar_trace_id = dep.exemplar_trace_id
+            existing.exemplar_span_id = dep.exemplar_span_id
+        else:
+            new_dep = RuntimeDependency(
+                tenant_id=tenant_id,
+                caller_service_name=dep.caller_service_name,
+                callee_service_name=dep.callee_service_name,
+                http_route=dep.operation_or_route,
+                http_method=dep.http_method or "ANY",
+                protocol=dep.protocol.value,
+                messaging_destination=dep.messaging_destination,
+                db_system=dep.db_system,
+                db_name=dep.db_name,
+                environment=dep.environment,
+                call_count_7d=dep.call_count,
+                error_count=dep.error_count,
+                p95_latency_ms=dep.p95_latency_ms,
+                exemplar_trace_id=dep.exemplar_trace_id,
+                exemplar_span_id=dep.exemplar_span_id,
+                first_observed_at=dep.first_observed_at,
+                last_observed_at=dep.last_observed_at,
+            )
+            db.add(new_dep)
+
+    await db.commit()
+
+    logger.info(
+        "otlp_trace_batch_ingested",
+        tenant_id=tenant_id,
+        spans_count=len(spans),
+        deps_count=len(observed_deps),
+    )
+    return {
+        "status": "ACCEPTED",
+        "spans_ingested": len(spans),
+        "dependencies_observed": len(observed_deps),
+    }
+
+
+@app.post("/api/v1/telemetry/traces", tags=["Telemetry"], status_code=status.HTTP_200_OK)
+async def ingest_tenant_traces(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(get_current_security_context),
+) -> dict[str, Any]:
+    """Authenticated endpoint for submitting OTLP trace payloads scoped to caller tenant."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    spans = SpanExtractor.extract_spans(body)
+    if not spans:
+        return {"status": "ACCEPTED", "spans_ingested": 0, "dependencies_observed": 0}
+
+    env = spans[0].environment if spans else "production"
+    observed_deps = DependencyBuilder.extract_dependencies(spans, environment=env)
+
+    for dep in observed_deps:
+        stmt = select(RuntimeDependency).where(
+            RuntimeDependency.tenant_id == context.tenant_id,
+            RuntimeDependency.caller_service_name == dep.caller_service_name,
+            RuntimeDependency.callee_service_name == dep.callee_service_name,
+            RuntimeDependency.http_route == dep.operation_or_route,
+            RuntimeDependency.protocol == dep.protocol.value,
+            RuntimeDependency.environment == dep.environment,
+        )
+        existing = (await db.execute(stmt)).scalar_one_or_none()
+        if existing:
+            existing.call_count_7d += dep.call_count
+            existing.error_count += dep.error_count
+            existing.p95_latency_ms = dep.p95_latency_ms
+            existing.last_observed_at = dep.last_observed_at
+        else:
+            db.add(
+                RuntimeDependency(
+                    tenant_id=context.tenant_id,
+                    caller_service_name=dep.caller_service_name,
+                    callee_service_name=dep.callee_service_name,
+                    http_route=dep.operation_or_route,
+                    http_method=dep.http_method or "ANY",
+                    protocol=dep.protocol.value,
+                    messaging_destination=dep.messaging_destination,
+                    db_system=dep.db_system,
+                    db_name=dep.db_name,
+                    environment=dep.environment,
+                    call_count_7d=dep.call_count,
+                    error_count=dep.error_count,
+                    p95_latency_ms=dep.p95_latency_ms,
+                    exemplar_trace_id=dep.exemplar_trace_id,
+                    exemplar_span_id=dep.exemplar_span_id,
+                )
+            )
+
+    await db.commit()
+    return {"status": "ACCEPTED", "spans_ingested": len(spans), "dependencies_observed": len(observed_deps)}
+
+
+@app.get("/api/v1/telemetry/runtime-graph", tags=["Telemetry"])
+async def get_runtime_graph(
+    environment: str = "production",
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(get_current_security_context),
+) -> dict[str, Any]:
+    """Retrieves observed runtime dependency graph for the authenticated tenant."""
+    stmt = (
+        select(RuntimeDependency)
+        .where(
+            RuntimeDependency.tenant_id == context.tenant_id,
+            RuntimeDependency.environment == environment,
+        )
+        .order_by(RuntimeDependency.call_count_7d.desc())
+    )
+    res = await db.execute(stmt)
+    deps = res.scalars().all()
+
+    services = sorted(
+        {d.caller_service_name for d in deps} | {d.callee_service_name for d in deps}
+    )
+
+    return {
+        "tenant_id": context.tenant_id,
+        "environment": environment,
+        "services": services,
+        "dependencies": [
+            {
+                "caller": d.caller_service_name,
+                "callee": d.callee_service_name,
+                "protocol": d.protocol,
+                "route": d.http_route,
+                "method": d.http_method,
+                "destination": d.messaging_destination,
+                "db_system": d.db_system,
+                "call_count": d.call_count_7d,
+                "error_count": d.error_count,
+                "p95_latency_ms": d.p95_latency_ms,
+                "last_observed_at": d.last_observed_at.isoformat(),
+                "exemplar_trace_id": d.exemplar_trace_id,
+            }
+            for d in deps
+        ],
+    }
+
+
+@app.get("/api/v1/telemetry/correlations", tags=["Telemetry"])
+async def get_dependency_correlations(
+    environment: str = "production",
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(get_current_security_context),
+) -> list[dict[str, Any]]:
+    """Correlates runtime dependencies with static repository symbols and contracts."""
+    stmt = select(RuntimeDependency).where(
+        RuntimeDependency.tenant_id == context.tenant_id,
+        RuntimeDependency.environment == environment,
+    )
+    deps = (await db.execute(stmt)).scalars().all()
+
+    # Convert to ObservedServiceDependency objects
+    observed = [
+        ObservedServiceDependency(
+            caller_service_name=d.caller_service_name,
+            callee_service_name=d.callee_service_name,
+            protocol=ProtocolType(d.protocol) if d.protocol in ProtocolType._value2member_map_ else ProtocolType.HTTP,
+            operation_or_route=d.http_route,
+            http_method=d.http_method,
+            messaging_destination=d.messaging_destination,
+            db_system=d.db_system,
+            db_name=d.db_name,
+            environment=d.environment,
+            call_count=d.call_count_7d,
+            error_count=d.error_count,
+            p95_latency_ms=d.p95_latency_ms,
+            first_observed_at=d.first_observed_at,
+            last_observed_at=d.last_observed_at,
+            exemplar_trace_id=d.exemplar_trace_id,
+            exemplar_span_id=d.exemplar_span_id,
+        )
+        for d in deps
+    ]
+
+    correlated = RuntimeCorrelationEngine.correlate_dependencies(observed)
+    return [c.model_dump() for c in correlated]

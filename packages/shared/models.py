@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -285,8 +286,12 @@ class RuntimeDependency(Base):
             "callee_service_name",
             "http_route",
             "http_method",
+            "protocol",
+            "environment",
             name="uq_runtime_dep_tenant_services_route",
         ),
+        Index("idx_runtime_dep_tenant_caller", "tenant_id", "caller_service_name"),
+        Index("idx_runtime_dep_tenant_callee", "tenant_id", "callee_service_name"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -295,8 +300,46 @@ class RuntimeDependency(Base):
     )
     caller_service_name: Mapped[str] = mapped_column(String(255), nullable=False)
     callee_service_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    http_route: Mapped[str] = mapped_column(String(255), nullable=False)
-    http_method: Mapped[str] = mapped_column(String(10), nullable=False)
+    http_route: Mapped[str] = mapped_column(String(255), nullable=False, default="/")
+    http_method: Mapped[str] = mapped_column(String(10), nullable=False, default="ANY")
+    protocol: Mapped[str] = mapped_column(String(32), nullable=False, default="HTTP")  # HTTP, GRPC, MESSAGING, DATABASE
+    messaging_destination: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    db_system: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    db_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    environment: Mapped[str] = mapped_column(String(64), nullable=False, default="production")
     call_count_7d: Mapped[int] = mapped_column(BigInteger, default=0)
+    error_count: Mapped[int] = mapped_column(BigInteger, default=0)
     p95_latency_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    is_sampled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sample_rate: Mapped[float] = mapped_column(Float, default=1.0)
+    exemplar_trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    exemplar_span_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    first_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     last_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    metadata_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class RuntimeTraceSpan(Base):
+    """Raw or buffered OpenTelemetry trace span preserved for aggregation and trace-linked evidence."""
+
+    __tablename__ = "runtime_trace_spans"
+    __table_args__ = (
+        Index("idx_runtime_spans_tenant_trace", "tenant_id", "trace_id"),
+        Index("idx_runtime_spans_service_observed", "service_name", "observed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    trace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    span_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    parent_span_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    service_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), default="INTERNAL")
+    status_code: Mapped[str] = mapped_column(String(16), default="UNSET")
+    duration_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    environment: Mapped[str] = mapped_column(String(64), default="production")
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

@@ -20,13 +20,17 @@ exporters:
     endpoint: "0.0.0.0:8889"
   logging:
     verbosity: detailed
+  otlphttp:
+    endpoint: "http://api:8000/v1/traces"
+    tls:
+      insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [logging]
+      exporters: [logging, otlphttp]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]

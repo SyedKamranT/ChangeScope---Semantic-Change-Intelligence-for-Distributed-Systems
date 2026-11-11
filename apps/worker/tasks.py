@@ -3,18 +3,26 @@
 import asyncio
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from celery import Task
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from apps.worker.app import celery_app
 from packages.shared.database import async_session_factory
 from packages.shared.ingestion.models import IngestionSourceType
 from packages.shared.ingestion.pipeline import IngestionPipeline
 from packages.shared.logger import logger
-from packages.shared.models import OutboxEvent, Repository, ScanRun
+from packages.shared.models import (
+    OutboxEvent,
+    Repository,
+    RuntimeDependency,
+    RuntimeTraceSpan,
+    ScanRun,
+)
+from packages.shared.telemetry.dependency_builder import DependencyBuilder
+from packages.shared.telemetry.models import NormalizedSpan, SpanKind
 
 
 def run_async(coro: Any) -> Any:
@@ -240,8 +248,279 @@ def process_scan_task(
     return result if isinstance(result, dict) else {"status": "UNKNOWN"}
 
 
+async def aggregate_otel_traces_async(retention_days: int = 7) -> dict[str, Any]:
+    """Aggregates buffered trace spans into runtime dependencies and purges expired spans."""
+    async with async_session_factory() as session:
+        # Fetch distinct tenants with buffered spans
+        tenant_stmt = select(RuntimeTraceSpan.tenant_id).distinct()
+        tenants = (await session.execute(tenant_stmt)).scalars().all()
+
+        total_deps_updated = 0
+        total_spans_processed = 0
+
+        for t_id in tenants:
+            stmt = select(RuntimeTraceSpan).where(RuntimeTraceSpan.tenant_id == t_id)
+            res = await session.execute(stmt)
+            raw_spans = res.scalars().all()
+            if not raw_spans:
+                continue
+
+            total_spans_processed += len(raw_spans)
+
+            normalized_spans: list[NormalizedSpan] = []
+            for s in raw_spans:
+                kind_enum = SpanKind(s.kind) if s.kind in SpanKind._value2member_map_ else SpanKind.INTERNAL
+                attrs = s.attributes or {}
+                normalized_spans.append(
+                    NormalizedSpan(
+                        trace_id=s.trace_id,
+                        span_id=s.span_id,
+                        parent_span_id=s.parent_span_id,
+                        service_name=s.service_name,
+                        name=s.name,
+                        kind=kind_enum,
+                        status_code=s.status_code,
+                        duration_ms=s.duration_ms,
+                        environment=s.environment,
+                        attributes=attrs,
+                        peer_service=attrs.get("peer.service") or attrs.get("net.peer.name"),
+                        http_route=attrs.get("http.route") or attrs.get("http.target"),
+                        http_method=attrs.get("http.method") or attrs.get("http.request.method"),
+                        http_status_code=attrs.get("http.status_code"),
+                        rpc_service=attrs.get("rpc.service"),
+                        rpc_method=attrs.get("rpc.method"),
+                        messaging_system=attrs.get("messaging.system"),
+                        messaging_destination=attrs.get("messaging.destination"),
+                        messaging_operation=attrs.get("messaging.operation"),
+                        db_system=attrs.get("db.system"),
+                        db_name=attrs.get("db.name"),
+                        db_statement=attrs.get("db.statement"),
+                        observed_at=s.observed_at,
+                    )
+                )
+
+            deps = DependencyBuilder.extract_dependencies(normalized_spans)
+            for dep in deps:
+                dep_stmt = select(RuntimeDependency).where(
+                    RuntimeDependency.tenant_id == t_id,
+                    RuntimeDependency.caller_service_name == dep.caller_service_name,
+                    RuntimeDependency.callee_service_name == dep.callee_service_name,
+                    RuntimeDependency.http_route == dep.operation_or_route,
+                    RuntimeDependency.protocol == dep.protocol.value,
+                    RuntimeDependency.environment == dep.environment,
+                )
+                existing = (await session.execute(dep_stmt)).scalar_one_or_none()
+                if existing:
+                    existing.call_count_7d += dep.call_count
+                    existing.error_count += dep.error_count
+                    existing.p95_latency_ms = dep.p95_latency_ms
+                    existing.last_observed_at = dep.last_observed_at
+                    existing.exemplar_trace_id = dep.exemplar_trace_id
+                    existing.exemplar_span_id = dep.exemplar_span_id
+                else:
+                    new_dep = RuntimeDependency(
+                        tenant_id=t_id,
+                        caller_service_name=dep.caller_service_name,
+                        callee_service_name=dep.callee_service_name,
+                        http_route=dep.operation_or_route,
+                        http_method=dep.http_method or "ANY",
+                        protocol=dep.protocol.value,
+                        messaging_destination=dep.messaging_destination,
+                        db_system=dep.db_system,
+                        db_name=dep.db_name,
+                        environment=dep.environment,
+                        call_count_7d=dep.call_count,
+                        error_count=dep.error_count,
+                        p95_latency_ms=dep.p95_latency_ms,
+                        exemplar_trace_id=dep.exemplar_trace_id,
+                        exemplar_span_id=dep.exemplar_span_id,
+                        first_observed_at=dep.first_observed_at,
+                        last_observed_at=dep.last_observed_at,
+                    )
+                    session.add(new_dep)
+                total_deps_updated += 1
+
+            # Emit Outbox event for Neo4j read projection
+            outbox_ev = OutboxEvent(
+                id=str(uuid.uuid4()),
+                tenant_id=t_id,
+                aggregate_type="RuntimeDependency",
+                aggregate_id=t_id,
+                event_type="runtime.dependencies.projected",
+                payload={
+                    "tenant_id": t_id,
+                    "dependencies_count": len(deps),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
+            session.add(outbox_ev)
+
+        # Purge spans older than retention window
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        del_stmt = (
+            delete(RuntimeTraceSpan)
+            .where(RuntimeTraceSpan.observed_at < cutoff)
+            .execution_options(synchronize_session=False)
+        )
+        del_res = await session.execute(del_stmt)
+        purged_count = int(getattr(del_res, "rowcount", 0) or 0)
+
+        await session.commit()
+        logger.info(
+            "otel_trace_aggregation_completed",
+            tenants_count=len(tenants),
+            spans_processed=total_spans_processed,
+            dependencies_updated=total_deps_updated,
+            spans_purged=purged_count,
+        )
+        return {
+            "status": "COMPLETED",
+            "tenants_count": len(tenants),
+            "spans_processed": total_spans_processed,
+            "dependencies_updated": total_deps_updated,
+            "spans_purged": purged_count,
+        }
+
+
+async def aggregate_otel_traces_async(retention_days: int = 7) -> dict[str, Any]:
+    """Aggregates buffered trace spans into runtime dependencies and purges expired spans."""
+    async with async_session_factory() as session:
+        # Fetch distinct tenants with buffered spans
+        tenant_stmt = select(RuntimeTraceSpan.tenant_id).distinct()
+        tenants = (await session.execute(tenant_stmt)).scalars().all()
+
+        total_deps_updated = 0
+        total_spans_processed = 0
+
+        for t_id in tenants:
+            stmt = select(RuntimeTraceSpan).where(RuntimeTraceSpan.tenant_id == t_id)
+            res = await session.execute(stmt)
+            raw_spans = res.scalars().all()
+            if not raw_spans:
+                continue
+
+            total_spans_processed += len(raw_spans)
+
+            normalized_spans: list[NormalizedSpan] = []
+            for s in raw_spans:
+                kind_enum = (
+                    SpanKind(s.kind) if s.kind in SpanKind._value2member_map_ else SpanKind.INTERNAL
+                )
+                attrs = s.attributes or {}
+                normalized_spans.append(
+                    NormalizedSpan(
+                        trace_id=s.trace_id,
+                        span_id=s.span_id,
+                        parent_span_id=s.parent_span_id,
+                        service_name=s.service_name,
+                        name=s.name,
+                        kind=kind_enum,
+                        status_code=s.status_code,
+                        duration_ms=s.duration_ms,
+                        environment=s.environment,
+                        attributes=attrs,
+                        peer_service=attrs.get("peer.service") or attrs.get("net.peer.name"),
+                        http_route=attrs.get("http.route") or attrs.get("http.target"),
+                        http_method=attrs.get("http.method") or attrs.get("http.request.method"),
+                        http_status_code=attrs.get("http.status_code"),
+                        rpc_service=attrs.get("rpc.service"),
+                        rpc_method=attrs.get("rpc.method"),
+                        messaging_system=attrs.get("messaging.system"),
+                        messaging_destination=attrs.get("messaging.destination"),
+                        messaging_operation=attrs.get("messaging.operation"),
+                        db_system=attrs.get("db.system"),
+                        db_name=attrs.get("db.name"),
+                        db_statement=attrs.get("db.statement"),
+                        observed_at=s.observed_at,
+                    )
+                )
+
+            deps = DependencyBuilder.extract_dependencies(normalized_spans)
+            for dep in deps:
+                dep_stmt = select(RuntimeDependency).where(
+                    RuntimeDependency.tenant_id == t_id,
+                    RuntimeDependency.caller_service_name == dep.caller_service_name,
+                    RuntimeDependency.callee_service_name == dep.callee_service_name,
+                    RuntimeDependency.http_route == dep.operation_or_route,
+                    RuntimeDependency.protocol == dep.protocol.value,
+                    RuntimeDependency.environment == dep.environment,
+                )
+                existing = (await session.execute(dep_stmt)).scalar_one_or_none()
+                if existing:
+                    existing.call_count_7d += dep.call_count
+                    existing.error_count += dep.error_count
+                    existing.p95_latency_ms = dep.p95_latency_ms
+                    existing.last_observed_at = dep.last_observed_at
+                    existing.exemplar_trace_id = dep.exemplar_trace_id
+                    existing.exemplar_span_id = dep.exemplar_span_id
+                else:
+                    new_dep = RuntimeDependency(
+                        tenant_id=t_id,
+                        caller_service_name=dep.caller_service_name,
+                        callee_service_name=dep.callee_service_name,
+                        http_route=dep.operation_or_route,
+                        http_method=dep.http_method or "ANY",
+                        protocol=dep.protocol.value,
+                        messaging_destination=dep.messaging_destination,
+                        db_system=dep.db_system,
+                        db_name=dep.db_name,
+                        environment=dep.environment,
+                        call_count_7d=dep.call_count,
+                        error_count=dep.error_count,
+                        p95_latency_ms=dep.p95_latency_ms,
+                        exemplar_trace_id=dep.exemplar_trace_id,
+                        exemplar_span_id=dep.exemplar_span_id,
+                        first_observed_at=dep.first_observed_at,
+                        last_observed_at=dep.last_observed_at,
+                    )
+                    session.add(new_dep)
+                total_deps_updated += 1
+
+            # Emit Outbox event for Neo4j read projection
+            outbox_ev = OutboxEvent(
+                id=str(uuid.uuid4()),
+                tenant_id=t_id,
+                aggregate_type="RuntimeDependency",
+                aggregate_id=t_id,
+                event_type="runtime.dependencies.projected",
+                payload={
+                    "tenant_id": t_id,
+                    "dependencies_count": len(deps),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
+            session.add(outbox_ev)
+
+        # Purge spans older than retention window
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        del_stmt = (
+            delete(RuntimeTraceSpan)
+            .where(RuntimeTraceSpan.observed_at < cutoff)
+            .execution_options(synchronize_session=False)
+        )
+        del_res = await session.execute(del_stmt)
+        purged_count = int(getattr(del_res, "rowcount", 0) or 0)
+
+        await session.commit()
+        logger.info(
+            "otel_trace_aggregation_completed",
+            tenants_count=len(tenants),
+            spans_processed=total_spans_processed,
+            dependencies_updated=total_deps_updated,
+            spans_purged=purged_count,
+        )
+        return {
+            "status": "COMPLETED",
+            "tenants_count": len(tenants),
+            "spans_processed": total_spans_processed,
+            "dependencies_updated": total_deps_updated,
+            "spans_purged": purged_count,
+        }
+
+
 @celery_app.task(name="apps.worker.tasks.aggregate_otel_traces_task")
-def aggregate_otel_traces_task() -> dict[str, str]:
+def aggregate_otel_traces_task(retention_days: int = 7) -> dict[str, Any]:
     """Periodic task aggregating OTLP trace spans into rolling service dependencies."""
     logger.info("otel_trace_aggregation_scheduled_run")
-    return {"status": "aggregated"}
+    result = run_async(aggregate_otel_traces_async(retention_days=retention_days))
+    return result if isinstance(result, dict) else {"status": "UNKNOWN"}
