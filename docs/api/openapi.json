@@ -1,0 +1,2913 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ChangeScope Production API",
+    "description": "Semantic Change Intelligence for Distributed Systems \u2014 Production API Gateway",
+    "contact": {
+      "name": "ChangeScope Engineering Team",
+      "email": "security@changescope.io"
+    },
+    "license": {
+      "name": "Apache 2.0"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Liveness probe",
+        "description": "Lightweight endpoint returning 200 OK while the API gateway process is executing.",
+        "operationId": "liveness_probe_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Liveness Probe Health Live Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Readiness probe",
+        "description": "Evaluates connectivity to all required datastores (PostgreSQL, Redis, Neo4j).",
+        "operationId": "readiness_probe_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Readiness Probe Health Ready Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/token": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Acquire Token",
+        "description": "Issues a cryptographically signed JWT access token and sets an HttpOnly session cookie.",
+        "operationId": "acquire_token_api_v1_auth_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Logout",
+        "description": "Clears the session cookie on user logout.",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Logout Api V1 Auth Logout Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Get Current User Profile",
+        "description": "Returns the authenticated principal and tenant boundary context.",
+        "operationId": "get_current_user_profile_api_v1_me_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Current User Profile Api V1 Me Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces": {
+      "get": {
+        "tags": [
+          "Workspaces"
+        ],
+        "summary": "List Workspaces",
+        "description": "Lists all workspaces belonging to the authenticated tenant.",
+        "operationId": "list_workspaces_api_v1_workspaces_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Workspaces Api V1 Workspaces Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Workspaces"
+        ],
+        "summary": "Create Workspace",
+        "description": "Creates a new workspace within the authenticated tenant.",
+        "operationId": "create_workspace_api_v1_workspaces_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Workspace Api V1 Workspaces Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repositories": {
+      "get": {
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "List Repositories",
+        "description": "Lists registered repositories belonging to the authenticated tenant with pagination.",
+        "operationId": "list_repositories_api_v1_repositories_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Repositories Api V1 Repositories Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "Register Repository",
+        "description": "Registers a repository for semantic scanning with BOLA workspace verification and SSRF checks.",
+        "operationId": "register_repository_api_v1_repositories_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryRegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Register Repository Api V1 Repositories Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans": {
+      "post": {
+        "tags": [
+          "Scans"
+        ],
+        "summary": "Trigger Scan",
+        "description": "Enqueues a semantic change intelligence scan with rate limiting and idempotency deduplication.",
+        "operationId": "trigger_scan_api_v1_scans_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanTriggerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Trigger Scan Api V1 Scans Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/{scan_id}": {
+      "get": {
+        "tags": [
+          "Scans"
+        ],
+        "summary": "Get Scan Status",
+        "description": "Retrieves execution status, metrics, and risk assessment for a scan run.",
+        "operationId": "get_scan_status_api_v1_scans__scan_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Scan Status Api V1 Scans  Scan Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/{scan_id}/violations": {
+      "get": {
+        "tags": [
+          "Scans"
+        ],
+        "summary": "Get Scan Violations",
+        "description": "Retrieves all detected semantic contract violations for a scan run.",
+        "operationId": "get_scan_violations_api_v1_scans__scan_id__violations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Get Scan Violations Api V1 Scans  Scan Id  Violations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/credentials": {
+      "post": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Store Credential",
+        "description": "Stores third-party integration credentials with AES-256-GCM encryption at rest.",
+        "operationId": "store_credential_api_v1_credentials_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialStoreRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Store Credential Api V1 Credentials Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "List Credentials",
+        "description": "Lists credentials owned by the tenant without revealing secrets.",
+        "operationId": "list_credentials_api_v1_credentials_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Credentials Api V1 Credentials Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/credentials/{credential_id}/secret": {
+      "get": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Get Decrypted Credential Secret",
+        "description": "Decrypts and returns the integration secret. Requires Analyst role.",
+        "operationId": "get_decrypted_credential_secret_api_v1_credentials__credential_id__secret_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Credential Id"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Decrypted Credential Secret Api V1 Credentials  Credential Id  Secret Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/github": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Github Webhook",
+        "description": "Verifies incoming GitHub webhook signatures and prevents forgery and replay attacks.",
+        "operationId": "github_webhook_api_v1_webhooks_github_post",
+        "parameters": [
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Signature-256"
+            }
+          },
+          {
+            "name": "X-GitHub-Event",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Github-Event"
+            }
+          },
+          {
+            "name": "X-GitHub-Delivery",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Github-Delivery"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Github Webhook Api V1 Webhooks Github Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/upload": {
+      "post": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Upload Contract Spec",
+        "description": "Uploads and validates an OpenAPI/AsyncAPI specification or ZIP archive against security constraints.",
+        "operationId": "upload_contract_spec_api_v1_contracts_upload_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadSpecRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Upload Contract Spec Api V1 Contracts Upload Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/traces": {
+      "post": {
+        "tags": [
+          "Telemetry"
+        ],
+        "summary": "Ingest Otlp Traces",
+        "description": "Standard OpenTelemetry Protocol (OTLP/HTTP) trace ingestion endpoint.\n\nAccepts standard OTLP JSON (resourceSpans). Scrubs credentials and PII in-memory,\nenforces tenant isolation from X-Tenant-ID header or resource attribute,\nbuffers normalized spans, and updates observed runtime dependencies.",
+        "operationId": "ingest_otlp_traces_v1_traces_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Ingest Otlp Traces V1 Traces Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/telemetry/traces": {
+      "post": {
+        "tags": [
+          "Telemetry"
+        ],
+        "summary": "Ingest Tenant Traces",
+        "description": "Authenticated endpoint for submitting OTLP trace payloads scoped to caller tenant.",
+        "operationId": "ingest_tenant_traces_api_v1_telemetry_traces_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Ingest Tenant Traces Api V1 Telemetry Traces Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/telemetry/runtime-graph": {
+      "get": {
+        "tags": [
+          "Telemetry"
+        ],
+        "summary": "Get Runtime Graph",
+        "description": "Retrieves observed runtime dependency graph for the authenticated tenant.",
+        "operationId": "get_runtime_graph_api_v1_telemetry_runtime_graph_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "production",
+              "title": "Environment"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Runtime Graph Api V1 Telemetry Runtime Graph Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/telemetry/correlations": {
+      "get": {
+        "tags": [
+          "Telemetry"
+        ],
+        "summary": "Get Dependency Correlations",
+        "description": "Correlates runtime dependencies with static repository symbols and contracts.",
+        "operationId": "get_dependency_correlations_api_v1_telemetry_correlations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "production",
+              "title": "Environment"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Get Dependency Correlations Api V1 Telemetry Correlations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/impact/evaluate": {
+      "post": {
+        "tags": [
+          "Impact Analysis"
+        ],
+        "summary": "Evaluate Changeset Impact",
+        "description": "Evaluates multi-hop impact and deterministic risk for a proposed ChangeSet.",
+        "operationId": "evaluate_changeset_impact_api_v1_impact_evaluate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeSetInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpactReasoningResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/remediation/report": {
+      "post": {
+        "tags": [
+          "Remediation"
+        ],
+        "summary": "Generate Remediation Report",
+        "description": "Generates an evidence-backed incident prevention and remediation report.",
+        "operationId": "generate_remediation_report_api_v1_remediation_report_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemediationReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentPreventionReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AffectedIntegrationTest": {
+        "properties": {
+          "test_file": {
+            "type": "string",
+            "title": "Test File"
+          },
+          "test_name": {
+            "type": "string",
+            "title": "Test Name"
+          },
+          "service_name": {
+            "type": "string",
+            "title": "Service Name"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "evidence_reference": {
+            "type": "string",
+            "title": "Evidence Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "test_file",
+          "test_name",
+          "service_name",
+          "reason",
+          "evidence_reference"
+        ],
+        "title": "AffectedIntegrationTest",
+        "description": "An existing repository integration or E2E test affected by the change."
+      },
+      "AffectedOwner": {
+        "properties": {
+          "service_name": {
+            "type": "string",
+            "title": "Service Name"
+          },
+          "team_name": {
+            "type": "string",
+            "title": "Team Name"
+          },
+          "owner_handle": {
+            "type": "string",
+            "title": "Owner Handle"
+          },
+          "contact_channel": {
+            "type": "string",
+            "title": "Contact Channel"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "default": "Service Owner"
+          },
+          "severity_level": {
+            "type": "string",
+            "title": "Severity Level",
+            "default": "HIGH"
+          }
+        },
+        "type": "object",
+        "required": [
+          "service_name",
+          "team_name",
+          "owner_handle",
+          "contact_channel"
+        ],
+        "title": "AffectedOwner",
+        "description": "Team or engineer responsible for an impacted downstream service."
+      },
+      "ChangeCategory": {
+        "type": "string",
+        "enum": [
+          "STRUCTURAL",
+          "SEMANTIC",
+          "EVENT",
+          "DATABASE"
+        ],
+        "title": "ChangeCategory",
+        "description": "Broad categorization of software contract changes."
+      },
+      "ChangeSetInput": {
+        "properties": {
+          "change_set_id": {
+            "type": "string",
+            "title": "Change Set Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "repository_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Id"
+          },
+          "base_commit": {
+            "type": "string",
+            "title": "Base Commit",
+            "default": "0000000000000000000000000000000000000000"
+          },
+          "head_commit": {
+            "type": "string",
+            "title": "Head Commit",
+            "default": "1111111111111111111111111111111111111111"
+          },
+          "target_branch": {
+            "type": "string",
+            "title": "Target Branch",
+            "default": "main"
+          },
+          "source_branch": {
+            "type": "string",
+            "title": "Source Branch",
+            "default": "feature"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedChange"
+            },
+            "type": "array",
+            "title": "Changes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id"
+        ],
+        "title": "ChangeSetInput",
+        "description": "The complete input payload provided to the impact reasoning engine."
+      },
+      "CompatibilityStrategy": {
+        "properties": {
+          "strategy_type": {
+            "$ref": "#/components/schemas/CompatibilityStrategyType"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale"
+          },
+          "implementation_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Implementation Steps"
+          },
+          "drawbacks_and_risks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Drawbacks And Risks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "strategy_type",
+          "title",
+          "rationale"
+        ],
+        "title": "CompatibilityStrategy",
+        "description": "Recommended architectural pattern for maintaining backward compatibility."
+      },
+      "CompatibilityStrategyType": {
+        "type": "string",
+        "enum": [
+          "ADDITIVE_EXPANSION",
+          "EXPAND_AND_CONTRACT",
+          "TOLERANT_READER",
+          "CONSUMER_ADAPTER_SHIM",
+          "EVENT_DUAL_PUBLICATION",
+          "API_VERSIONING_ROUTING"
+        ],
+        "title": "CompatibilityStrategyType",
+        "description": "Pattern for mitigating breaking distributed changes."
+      },
+      "ContractFinding": {
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "title": "Finding Id"
+          },
+          "change_category": {
+            "$ref": "#/components/schemas/ChangeCategory"
+          },
+          "change_type": {
+            "type": "string",
+            "title": "Change Type"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FindingSeverity"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "before_state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Before State"
+          },
+          "after_state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "After State"
+          },
+          "affected_entities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Affected Entities"
+          },
+          "supporting_evidence": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Supporting Evidence"
+          },
+          "uncertainty_explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty Explanation"
+          },
+          "recommended_verification": {
+            "type": "string",
+            "title": "Recommended Verification"
+          },
+          "json_pointer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Json Pointer"
+          },
+          "file_path": {
+            "type": "string",
+            "title": "File Path",
+            "default": "contract"
+          },
+          "start_line": {
+            "type": "integer",
+            "title": "Start Line",
+            "default": 1
+          },
+          "end_line": {
+            "type": "integer",
+            "title": "End Line",
+            "default": 1
+          },
+          "is_ai_inferred": {
+            "type": "boolean",
+            "title": "Is Ai Inferred",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_category",
+          "change_type",
+          "severity",
+          "confidence",
+          "recommended_verification"
+        ],
+        "title": "ContractFinding",
+        "description": "Structured contract intelligence finding representing a detected change and its impact."
+      },
+      "ContractTestUpdate": {
+        "properties": {
+          "consumer_service": {
+            "type": "string",
+            "title": "Consumer Service"
+          },
+          "provider_service": {
+            "type": "string",
+            "title": "Provider Service"
+          },
+          "contract_file": {
+            "type": "string",
+            "title": "Contract File"
+          },
+          "recommended_assertion": {
+            "type": "string",
+            "title": "Recommended Assertion"
+          },
+          "breaking_field": {
+            "type": "string",
+            "title": "Breaking Field"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consumer_service",
+          "provider_service",
+          "contract_file",
+          "recommended_assertion",
+          "breaking_field",
+          "reason"
+        ],
+        "title": "ContractTestUpdate",
+        "description": "A required assertion or contract mock update for consumer-driven tests."
+      },
+      "CredentialStoreRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "provider": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Provider"
+          },
+          "secret": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Secret"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "provider",
+          "secret"
+        ],
+        "title": "CredentialStoreRequest"
+      },
+      "ExplainabilityFact": {
+        "properties": {
+          "fact_id": {
+            "type": "string",
+            "title": "Fact Id"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/FactClassification"
+          },
+          "statement": {
+            "type": "string",
+            "title": "Statement"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "evidence_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Reference"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "default": 1.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "classification",
+          "statement",
+          "source"
+        ],
+        "title": "ExplainabilityFact",
+        "description": "A classified statement distinguishing verified facts from inferences and recommendations."
+      },
+      "ExposureLevel": {
+        "type": "string",
+        "enum": [
+          "PUBLIC_INTERNET",
+          "PARTNER_API",
+          "INTERNAL_SERVICE",
+          "RESTRICTED"
+        ],
+        "title": "ExposureLevel",
+        "description": "Network and boundary exposure classification."
+      },
+      "FactClassification": {
+        "type": "string",
+        "enum": [
+          "VERIFIED_FACT",
+          "INFERRED_FINDING",
+          "RECOMMENDATION"
+        ],
+        "title": "FactClassification",
+        "description": "Explainability tier for findings and statements."
+      },
+      "FindingSeverity": {
+        "type": "string",
+        "enum": [
+          "BLOCKING",
+          "WARNING",
+          "INFO"
+        ],
+        "title": "FindingSeverity",
+        "description": "Impact severity classification."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImpactCategory": {
+        "type": "string",
+        "enum": [
+          "DIRECT",
+          "TRANSITIVE",
+          "SEMANTIC",
+          "RUNTIME_OBSERVED",
+          "WORKFLOW",
+          "PERMISSION",
+          "UNKNOWN"
+        ],
+        "title": "ImpactCategory",
+        "description": "Classification of impact propagation mechanism."
+      },
+      "ImpactPath": {
+        "properties": {
+          "source_entity": {
+            "type": "string",
+            "title": "Source Entity"
+          },
+          "target_entity": {
+            "type": "string",
+            "title": "Target Entity"
+          },
+          "path_hops": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Path Hops"
+          },
+          "relationship_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Relationship Types"
+          },
+          "cumulative_confidence": {
+            "type": "number",
+            "title": "Cumulative Confidence",
+            "default": 1.0
+          },
+          "evidence_references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence References"
+          },
+          "has_runtime_evidence": {
+            "type": "boolean",
+            "title": "Has Runtime Evidence",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_entity",
+          "target_entity"
+        ],
+        "title": "ImpactPath",
+        "description": "An evidence-backed directed traversal path from root change to affected consumer."
+      },
+      "ImpactReasoningResult": {
+        "properties": {
+          "change_set_id": {
+            "type": "string",
+            "title": "Change Set Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "root_changed_entities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Root Changed Entities"
+          },
+          "affected_entities": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactedEntity"
+            },
+            "type": "array",
+            "title": "Affected Entities"
+          },
+          "impacted_services_count": {
+            "type": "integer",
+            "title": "Impacted Services Count",
+            "default": 0
+          },
+          "impacted_endpoints_count": {
+            "type": "integer",
+            "title": "Impacted Endpoints Count",
+            "default": 0
+          },
+          "affected_workflows": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Affected Workflows"
+          },
+          "graph_paths": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactPath"
+            },
+            "type": "array",
+            "title": "Graph Paths"
+          },
+          "evidence_references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence References"
+          },
+          "overall_confidence": {
+            "type": "number",
+            "title": "Overall Confidence",
+            "default": 1.0
+          },
+          "overall_uncertainty": {
+            "type": "number",
+            "title": "Overall Uncertainty",
+            "default": 0.0
+          },
+          "risk_score": {
+            "type": "integer",
+            "title": "Risk Score",
+            "default": 0
+          },
+          "risk_level": {
+            "type": "string",
+            "title": "Risk Level",
+            "default": "LOW"
+          },
+          "risk_breakdown": {
+            "$ref": "#/components/schemas/RiskBreakdown"
+          },
+          "recommended_action": {
+            "$ref": "#/components/schemas/RecommendedAction"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Edges"
+          },
+          "summary_narrative": {
+            "type": "string",
+            "title": "Summary Narrative"
+          },
+          "evaluated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Evaluated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "change_set_id",
+          "tenant_id",
+          "risk_breakdown",
+          "recommended_action",
+          "summary_narrative"
+        ],
+        "title": "ImpactReasoningResult",
+        "description": "Authoritative, deterministic output from the ChangeScope Impact Reasoning Engine."
+      },
+      "ImpactedEntity": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "entity_name": {
+            "type": "string",
+            "title": "Entity Name"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "impact_category": {
+            "$ref": "#/components/schemas/ImpactCategory"
+          },
+          "hop_distance": {
+            "type": "integer",
+            "title": "Hop Distance",
+            "default": 1
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Path"
+          },
+          "path_confidence": {
+            "type": "number",
+            "title": "Path Confidence",
+            "default": 1.0
+          },
+          "is_runtime_confirmed": {
+            "type": "boolean",
+            "title": "Is Runtime Confirmed",
+            "default": false
+          },
+          "call_frequency_7d": {
+            "type": "integer",
+            "title": "Call Frequency 7D",
+            "default": 0
+          },
+          "p95_latency_ms": {
+            "type": "number",
+            "title": "P95 Latency Ms",
+            "default": 0.0
+          },
+          "service_tier": {
+            "$ref": "#/components/schemas/ServiceTier",
+            "default": "TIER_2"
+          },
+          "exposure": {
+            "$ref": "#/components/schemas/ExposureLevel",
+            "default": "INTERNAL_SERVICE"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "required_permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Permissions"
+          },
+          "ontology_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ontology Concepts"
+          },
+          "evidence_citations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Citations"
+          },
+          "uncertainty_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Uncertainty Reasons"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "entity_name",
+          "entity_type",
+          "impact_category"
+        ],
+        "title": "ImpactedEntity",
+        "description": "A distinct downstream entity affected directly or transitively by a change."
+      },
+      "IncidentPreventionReport": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "scan_id": {
+            "type": "string",
+            "title": "Scan Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "risk_score": {
+            "type": "integer",
+            "title": "Risk Score"
+          },
+          "risk_level": {
+            "type": "string",
+            "title": "Risk Level"
+          },
+          "recommended_action": {
+            "type": "string",
+            "title": "Recommended Action"
+          },
+          "executive_summary": {
+            "type": "string",
+            "title": "Executive Summary"
+          },
+          "facts_and_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ExplainabilityFact"
+            },
+            "type": "array",
+            "title": "Facts And Evidence"
+          },
+          "test_recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/TestRecommendation"
+            },
+            "type": "array",
+            "title": "Test Recommendations"
+          },
+          "affected_integration_tests": {
+            "items": {
+              "$ref": "#/components/schemas/AffectedIntegrationTest"
+            },
+            "type": "array",
+            "title": "Affected Integration Tests"
+          },
+          "contract_test_updates": {
+            "items": {
+              "$ref": "#/components/schemas/ContractTestUpdate"
+            },
+            "type": "array",
+            "title": "Contract Test Updates"
+          },
+          "migration_steps": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationStep"
+            },
+            "type": "array",
+            "title": "Migration Steps"
+          },
+          "affected_owners": {
+            "items": {
+              "$ref": "#/components/schemas/AffectedOwner"
+            },
+            "type": "array",
+            "title": "Affected Owners"
+          },
+          "compatibility_strategies": {
+            "items": {
+              "$ref": "#/components/schemas/CompatibilityStrategy"
+            },
+            "type": "array",
+            "title": "Compatibility Strategies"
+          },
+          "markdown_report": {
+            "type": "string",
+            "title": "Markdown Report"
+          },
+          "execution_trace": {
+            "$ref": "#/components/schemas/RemediationExecutionTrace"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scan_id",
+          "tenant_id",
+          "risk_score",
+          "risk_level",
+          "recommended_action",
+          "executive_summary",
+          "markdown_report",
+          "execution_trace"
+        ],
+        "title": "IncidentPreventionReport",
+        "description": "Complete human-readable and machine-executable incident prevention report."
+      },
+      "MigrationPhase": {
+        "type": "string",
+        "enum": [
+          "PHASE_1_PREPARATION",
+          "PHASE_2_DUAL_WRITE",
+          "PHASE_3_CONSUMER_MIGRATION",
+          "PHASE_4_DEPRECATION",
+          "PHASE_5_CLEANUP"
+        ],
+        "title": "MigrationPhase",
+        "description": "Phases in an API and contract migration roadmap."
+      },
+      "MigrationStep": {
+        "properties": {
+          "step_number": {
+            "type": "integer",
+            "title": "Step Number"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/MigrationPhase"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "responsible_team": {
+            "type": "string",
+            "title": "Responsible Team"
+          },
+          "rollback_plan": {
+            "type": "string",
+            "title": "Rollback Plan"
+          },
+          "estimated_duration": {
+            "type": "string",
+            "title": "Estimated Duration"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step_number",
+          "phase",
+          "title",
+          "description",
+          "responsible_team",
+          "rollback_plan",
+          "estimated_duration"
+        ],
+        "title": "MigrationStep",
+        "description": "A discrete, actionable step in the multi-phase API migration plan."
+      },
+      "ProposedChange": {
+        "properties": {
+          "change_id": {
+            "type": "string",
+            "title": "Change Id"
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "entity_name": {
+            "type": "string",
+            "title": "Entity Name"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "change_type": {
+            "type": "string",
+            "title": "Change Type",
+            "default": "MODIFIED"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "BLOCKING"
+          },
+          "is_breaking": {
+            "type": "boolean",
+            "title": "Is Breaking",
+            "default": true
+          },
+          "before_state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Before State"
+          },
+          "after_state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "After State"
+          },
+          "field_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Name"
+          },
+          "endpoint_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Path"
+          },
+          "http_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Method"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Concepts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "entity_name",
+          "entity_type"
+        ],
+        "title": "ProposedChange",
+        "description": "Represents a discrete entity mutation in a proposed ChangeSet."
+      },
+      "RecommendedAction": {
+        "type": "string",
+        "enum": [
+          "BLOCK_MERGE",
+          "REQUIRE_MANUAL_APPROVAL",
+          "RUN_CANARY_TESTS",
+          "NOTIFY_SERVICE_OWNERS",
+          "PROCEED_WITH_MONITORING"
+        ],
+        "title": "RecommendedAction",
+        "description": "Deterministic, actionable guidance produced from risk assessment."
+      },
+      "RemediationExecutionTrace": {
+        "properties": {
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "token_usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Token Usage"
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "title": "Estimated Cost Usd",
+            "default": 0.0
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms",
+            "default": 0
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "COMPLETED"
+          },
+          "retries_count": {
+            "type": "integer",
+            "title": "Retries Count",
+            "default": 0
+          },
+          "safety_checks_passed": {
+            "type": "boolean",
+            "title": "Safety Checks Passed",
+            "default": true
+          },
+          "can_deploy_or_merge": {
+            "type": "boolean",
+            "title": "Can Deploy Or Merge",
+            "default": false
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "title": "RemediationExecutionTrace",
+        "description": "Auditable telemetry and execution trace of the remediation reasoning workflow."
+      },
+      "RemediationReportRequest": {
+        "properties": {
+          "scan_id": {
+            "type": "string",
+            "title": "Scan Id"
+          },
+          "impact_result": {
+            "$ref": "#/components/schemas/ImpactReasoningResult"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ContractFinding"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "known_test_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Known Test Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scan_id",
+          "impact_result"
+        ],
+        "title": "RemediationReportRequest"
+      },
+      "RepositoryRegisterRequest": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "title": "Workspace Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "clone_url": {
+            "type": "string",
+            "title": "Clone Url"
+          },
+          "default_branch": {
+            "type": "string",
+            "title": "Default Branch",
+            "default": "main"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "name",
+          "clone_url"
+        ],
+        "title": "RepositoryRegisterRequest"
+      },
+      "RiskBreakdown": {
+        "properties": {
+          "base_severity_score": {
+            "type": "number",
+            "title": "Base Severity Score",
+            "default": 0.0
+          },
+          "reachability_score": {
+            "type": "number",
+            "title": "Reachability Score",
+            "default": 0.0
+          },
+          "usage_multiplier": {
+            "type": "number",
+            "title": "Usage Multiplier",
+            "default": 1.0
+          },
+          "criticality_score": {
+            "type": "number",
+            "title": "Criticality Score",
+            "default": 0.0
+          },
+          "exposure_factor": {
+            "type": "number",
+            "title": "Exposure Factor",
+            "default": 1.0
+          },
+          "freshness_factor": {
+            "type": "number",
+            "title": "Freshness Factor",
+            "default": 1.0
+          },
+          "semantic_confidence_factor": {
+            "type": "number",
+            "title": "Semantic Confidence Factor",
+            "default": 1.0
+          },
+          "uncertainty_penalty": {
+            "type": "number",
+            "title": "Uncertainty Penalty",
+            "default": 0.0
+          },
+          "total_raw_score": {
+            "type": "number",
+            "title": "Total Raw Score",
+            "default": 0.0
+          },
+          "final_score": {
+            "type": "integer",
+            "title": "Final Score",
+            "default": 0
+          },
+          "formula_explanation": {
+            "type": "string",
+            "title": "Formula Explanation"
+          },
+          "factors": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Factors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "formula_explanation"
+        ],
+        "title": "RiskBreakdown",
+        "description": "Transparent and auditable breakdown of deterministic risk calculation factors."
+      },
+      "ScanTriggerRequest": {
+        "properties": {
+          "repository_id": {
+            "type": "string",
+            "title": "Repository Id"
+          },
+          "target_branch": {
+            "type": "string",
+            "title": "Target Branch",
+            "default": "main"
+          },
+          "source_branch": {
+            "type": "string",
+            "title": "Source Branch",
+            "default": "feat/contract-update"
+          },
+          "base_commit": {
+            "type": "string",
+            "title": "Base Commit",
+            "default": "0000000"
+          },
+          "head_commit": {
+            "type": "string",
+            "title": "Head Commit",
+            "default": "1111111"
+          },
+          "changed_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repository_id"
+        ],
+        "title": "ScanTriggerRequest"
+      },
+      "ServiceTier": {
+        "type": "string",
+        "enum": [
+          "TIER_1",
+          "TIER_2",
+          "TIER_3"
+        ],
+        "title": "ServiceTier",
+        "description": "Operational criticality tier of a service."
+      },
+      "TenantRole": {
+        "type": "string",
+        "enum": [
+          "organization_owner",
+          "administrator",
+          "analyst",
+          "viewer",
+          "owner",
+          "admin",
+          "engineer",
+          "auditor"
+        ],
+        "title": "TenantRole",
+        "description": "Hierarchical roles for tenant workspace access control."
+      },
+      "TestRecommendation": {
+        "properties": {
+          "test_id": {
+            "type": "string",
+            "title": "Test Id"
+          },
+          "test_type": {
+            "$ref": "#/components/schemas/TestType"
+          },
+          "test_objective": {
+            "type": "string",
+            "title": "Test Objective"
+          },
+          "preconditions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preconditions"
+          },
+          "test_inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Test Inputs"
+          },
+          "expected_behavior": {
+            "type": "string",
+            "title": "Expected Behavior"
+          },
+          "affected_service": {
+            "type": "string",
+            "title": "Affected Service"
+          },
+          "relevant_finding": {
+            "type": "string",
+            "title": "Relevant Finding"
+          },
+          "evidence_references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence References"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "default": 1.0
+          },
+          "code_snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Snippet"
+          },
+          "review_status": {
+            "type": "string",
+            "title": "Review Status",
+            "default": "PENDING_HUMAN_REVIEW"
+          },
+          "requires_human_review": {
+            "type": "boolean",
+            "title": "Requires Human Review",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "test_type",
+          "test_objective",
+          "expected_behavior",
+          "affected_service",
+          "relevant_finding"
+        ],
+        "title": "TestRecommendation",
+        "description": "A concrete, evidence-backed test case recommendation."
+      },
+      "TestType": {
+        "type": "string",
+        "enum": [
+          "REGRESSION",
+          "INTEGRATION",
+          "CONTRACT",
+          "END_TO_END"
+        ],
+        "title": "TestType",
+        "description": "Categorization of recommended test cases."
+      },
+      "TokenRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 2,
+            "title": "Username"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "role": {
+            "$ref": "#/components/schemas/TenantRole",
+            "default": "engineer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "title": "TokenRequest"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in_minutes": {
+            "type": "integer",
+            "title": "Expires In Minutes"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in_minutes",
+          "tenant_id"
+        ],
+        "title": "TokenResponse"
+      },
+      "UploadSpecRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Filename"
+          },
+          "content_base64": {
+            "type": "string",
+            "title": "Content Base64",
+            "description": "Base64 encoded file content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "content_base64"
+        ],
+        "title": "UploadSpecRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WorkspaceCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "slug"
+        ],
+        "title": "WorkspaceCreateRequest"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

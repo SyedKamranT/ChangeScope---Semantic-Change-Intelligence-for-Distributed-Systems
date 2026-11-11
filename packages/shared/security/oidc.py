@@ -71,7 +71,10 @@ class OIDCClient:
             raise AuthenticationError(f"OIDC discovery error: {exc}") from exc
 
     def get_signing_key_for_token(self, token: str) -> Any:
-        """Extracts the Key ID (kid) from the JWT header and retrieves the corresponding public key."""
+        """Extracts the Key ID (kid) from the JWT header and retrieves the corresponding public key.
+
+        Handles key rotation by refreshing the JWKS client cache when an unrecognized kid is encountered.
+        """
         if not self._jwks_client:
             raise AuthenticationError("OIDC client has not completed discovery or JWKS is unavailable.")
 
@@ -79,7 +82,15 @@ class OIDCClient:
             signing_key = self._jwks_client.get_signing_key_from_jwt(token)
             return signing_key.key
         except jwt.PyJWKClientError as exc:
-            logger.warning("oidc_jwks_key_not_found", error=str(exc))
+            logger.info("oidc_jwks_refreshing_for_rotation", reason=str(exc))
+            # Attempt JWKS cache refresh in case keys were rotated upstream
+            if self._config and self._config.jwks_uri:
+                self._jwks_client = PyJWKClient(self._config.jwks_uri, cache_keys=True, max_cached_keys=32)
+                try:
+                    signing_key = self._jwks_client.get_signing_key_from_jwt(token)
+                    return signing_key.key
+                except Exception as retry_exc:
+                    logger.warning("oidc_jwks_key_not_found_after_refresh", error=str(retry_exc))
             raise AuthenticationError(f"Unable to find cryptographic key matching token header: {exc}") from exc
 
 

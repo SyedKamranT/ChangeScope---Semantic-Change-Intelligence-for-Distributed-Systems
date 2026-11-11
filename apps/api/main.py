@@ -1,11 +1,12 @@
 """ChangeScope API Gateway Application Entrypoint."""
 
+import hashlib
 import uuid
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import Depends, FastAPI, Request, Response, status
+from fastapi import Depends, FastAPI, Header, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -17,8 +18,6 @@ from packages.shared.config import settings
 from packages.shared.database import close_db, get_db_session, init_db
 from packages.shared.errors import (
     ChangeScopeBaseError,
-    ConflictError,
-    NotFoundError,
     ServiceUnavailableError,
     problem_detail_response,
 )
@@ -30,14 +29,9 @@ from packages.shared.impact import (
 )
 from packages.shared.logger import configure_structured_logging, logger
 from packages.shared.models import (
-    OutboxEvent,
-    Repository,
+    IdempotencyRecord,
     RuntimeDependency,
     RuntimeTraceSpan,
-    ScanRun,
-    Tenant,
-    Violation,
-    Workspace,
 )
 from packages.shared.remediation import (
     IncidentPreventionReport,
@@ -45,12 +39,26 @@ from packages.shared.remediation import (
 )
 from packages.shared.security import (
     CorrelationIdMiddleware,
+    RequestTimeoutMiddleware,
     SecurityContext,
+    SecurityHeadersMiddleware,
     TenantRole,
+    UploadSecurityError,
+    UploadValidator,
+    WebhookVerifier,
+    clear_session_cookie,
     create_access_token,
     get_correlation_id,
     get_current_security_context,
+    rate_limiter,
     require_role,
+    set_secure_session_cookie,
+)
+from packages.shared.services import (
+    CredentialService,
+    RepositoryService,
+    ScanService,
+    WorkspaceService,
 )
 from packages.shared.telemetry import (
     DependencyBuilder,
@@ -73,21 +81,31 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=settings.APP_NAME,
+    title=f"{settings.APP_NAME} Production API",
     version=settings.APP_VERSION,
-    description="Semantic Change Intelligence for Distributed Systems",
+    description="Semantic Change Intelligence for Distributed Systems — Production API Gateway",
+    contact={"name": "ChangeScope Engineering Team", "email": "security@changescope.io"},
+    license_info={"name": "Apache 2.0"},
     lifespan=lifespan,
 )
 
-# Request Correlation ID Middleware (MUST be added first to trace all downstream handlers)
+# 1. Request Correlation ID Middleware (MUST be added first to trace all downstream handlers)
 app.add_middleware(CorrelationIdMiddleware)
 
-# Cross-Origin Resource Sharing (CORS)
+# 2. Defense-in-depth Security Headers (HSTS, CSP, X-Content-Type-Options, X-Frame-Options)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 3. Execution Timeout Guard (30s SLA)
+app.add_middleware(RequestTimeoutMiddleware, timeout_seconds=30.0)
+
+# 4. Cross-Origin Resource Sharing (CORS) with strict origin whitelisting
+cors_origins = settings.CORS_ORIGINS if settings.CORS_ORIGINS else ["*"]
+allow_credentials = False if "*" in cors_origins else True
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=allow_credentials,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
 
@@ -100,11 +118,14 @@ async def handle_changescope_base_error(request: Request, exc: ChangeScopeBaseEr
     logger.warning(
         "domain_exception_raised", error_type=exc.error_type, status_code=exc.status_code, message=exc.message
     )
-    return problem_detail_response(
+    resp = problem_detail_response(
         exc=exc,
         instance=str(request.url),
         request_id=get_correlation_id(),
     )
+    if hasattr(exc, "retry_after_seconds"):
+        resp.headers["Retry-After"] = str(exc.retry_after_seconds)
+    return resp
 
 
 @app.exception_handler(RequestValidationError)
@@ -271,8 +292,8 @@ class ScanTriggerRequest(BaseModel):
 
 
 @app.post("/api/v1/auth/token", response_model=TokenResponse, tags=["Authentication"])
-async def acquire_token(req: TokenRequest) -> TokenResponse:
-    """Issues a cryptographically signed JWT access token for local or authenticated access."""
+async def acquire_token(req: TokenRequest, response: Response) -> TokenResponse:
+    """Issues a cryptographically signed JWT access token and sets an HttpOnly session cookie."""
     tenant_id = req.tenant_id or settings.DEFAULT_TENANT_ID
     claims = {
         "sub": req.username,
@@ -281,12 +302,20 @@ async def acquire_token(req: TokenRequest) -> TokenResponse:
         "email": f"{req.username}@changescope.local",
     }
     token = create_access_token(claims)
+    set_secure_session_cookie(response, token)
     return TokenResponse(
         access_token=token,
         token_type="bearer",
         expires_in_minutes=settings.JWT_EXPIRE_MINUTES,
         tenant_id=tenant_id,
     )
+
+
+@app.post("/api/v1/auth/logout", tags=["Authentication"])
+async def logout(response: Response) -> dict[str, str]:
+    """Clears the session cookie on user logout."""
+    clear_session_cookie(response)
+    return {"status": "LOGGED_OUT"}
 
 
 @app.get("/api/v1/me", tags=["Authentication"])
@@ -311,9 +340,8 @@ async def list_workspaces(
     context: SecurityContext = Depends(get_current_security_context),
 ) -> list[dict[str, Any]]:
     """Lists all workspaces belonging to the authenticated tenant."""
-    query = select(Workspace).where(Workspace.tenant_id == context.tenant_id)
-    result = await db.execute(query)
-    workspaces = result.scalars().all()
+    service = WorkspaceService(db)
+    workspaces = await service.list_workspaces(context)
     return [
         {
             "id": w.id,
@@ -332,38 +360,9 @@ async def create_workspace(
     context: SecurityContext = Depends(require_role(TenantRole.ADMIN)),
 ) -> dict[str, Any]:
     """Creates a new workspace within the authenticated tenant."""
-    # Ensure tenant exists
-    tenant_res = await db.execute(select(Tenant).where(Tenant.id == context.tenant_id))
-    tenant = tenant_res.scalar_one_or_none()
-    if not tenant:
-        tenant = Tenant(
-            id=context.tenant_id,
-            name="Default Organization",
-            slug=f"org-{context.tenant_id[:8]}",
-            tier="enterprise",
-        )
-        db.add(tenant)
-        await db.flush()
-
-    # Check for slug collision within tenant
-    existing = await db.execute(
-        select(Workspace).where(
-            Workspace.tenant_id == context.tenant_id,
-            Workspace.slug == req.slug,
-        )
-    )
-    if existing.scalar_one_or_none():
-        raise ConflictError(f"Workspace with slug '{req.slug}' already exists in this tenant.")
-
-    workspace = Workspace(
-        id=str(uuid.uuid4()),
-        tenant_id=context.tenant_id,
-        name=req.name,
-        slug=req.slug,
-    )
-    db.add(workspace)
+    service = WorkspaceService(db)
+    workspace = await service.create_workspace(context, name=req.name, slug=req.slug)
     await db.commit()
-    await db.refresh(workspace)
     logger.info("workspace_created", workspace_id=workspace.id, slug=workspace.slug, tenant_id=context.tenant_id)
     return {
         "id": workspace.id,
@@ -379,15 +378,16 @@ async def create_workspace(
 @app.get("/api/v1/repositories", tags=["Repositories"])
 async def list_repositories(
     workspace_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
     db: AsyncSession = Depends(get_db_session),
     context: SecurityContext = Depends(get_current_security_context),
 ) -> list[dict[str, Any]]:
-    """Lists registered repositories belonging to the authenticated tenant."""
-    query = select(Repository).where(Repository.tenant_id == context.tenant_id)
-    if workspace_id:
-        query = query.where(Repository.workspace_id == workspace_id)
-    result = await db.execute(query)
-    repos = result.scalars().all()
+    """Lists registered repositories belonging to the authenticated tenant with pagination."""
+    safe_limit = min(max(1, limit), 100)
+    service = RepositoryService(db)
+    repos = await service.list_repositories(context, workspace_id=workspace_id)
+    paged = repos[offset : offset + safe_limit]
     return [
         {
             "id": r.id,
@@ -397,7 +397,7 @@ async def list_repositories(
             "status": r.status,
             "created_at": r.created_at.isoformat(),
         }
-        for r in repos
+        for r in paged
     ]
 
 
@@ -407,19 +407,16 @@ async def register_repository(
     db: AsyncSession = Depends(get_db_session),
     context: SecurityContext = Depends(require_role(TenantRole.ENGINEER)),
 ) -> dict[str, Any]:
-    """Registers a repository for semantic scanning."""
-    repo_id = str(uuid.uuid4())
-    repo = Repository(
-        id=repo_id,
-        tenant_id=context.tenant_id,
+    """Registers a repository for semantic scanning with BOLA workspace verification and SSRF checks."""
+    service = RepositoryService(db)
+    repo = await service.register_repository(
+        context=context,
         workspace_id=req.workspace_id,
         name=req.name,
         clone_url=req.clone_url,
         default_branch=req.default_branch,
     )
-    db.add(repo)
     await db.commit()
-    await db.refresh(repo)
     logger.info("repository_registered", repository_id=repo.id, name=repo.name)
     return {
         "id": repo.id,
@@ -438,58 +435,62 @@ async def trigger_scan(
     req: ScanTriggerRequest,
     db: AsyncSession = Depends(get_db_session),
     context: SecurityContext = Depends(require_role(TenantRole.ENGINEER)),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> dict[str, Any]:
-    """Enqueues an asynchronous semantic change intelligence scan and writes an Outbox event."""
-    # Verify repository exists and belongs to the authenticated tenant
-    repo_res = await db.execute(
-        select(Repository).where(
-            Repository.id == req.repository_id,
-            Repository.tenant_id == context.tenant_id,
-        )
-    )
-    repo = repo_res.scalar_one_or_none()
-    if not repo:
-        raise NotFoundError(f"Repository '{req.repository_id}' not found in tenant.")
+    """Enqueues a semantic change intelligence scan with rate limiting and idempotency deduplication."""
+    # 1. Rate Limiting Check
+    await rate_limiter.check_rate_limit(key=f"scan:{context.tenant_id}", limit=60, window_seconds=60)
 
-    scan_id = str(uuid.uuid4())
-    scan_run = ScanRun(
-        id=scan_id,
-        tenant_id=context.tenant_id,
+    # 2. Idempotency Check
+    req_hash = ""
+    if idempotency_key:
+        req_hash = hashlib.sha256(req.model_dump_json().encode("utf-8")).hexdigest()
+        rec_stmt = select(IdempotencyRecord).where(
+            IdempotencyRecord.tenant_id == context.tenant_id,
+            IdempotencyRecord.idempotency_key == idempotency_key,
+        )
+        existing_rec = (await db.execute(rec_stmt)).scalar_one_or_none()
+        if existing_rec:
+            import json
+
+            return dict(json.loads(existing_rec.response_body))
+
+    # 3. Service Layer Execution (Repository tenancy validation and Outbox persistence)
+    service = ScanService(db)
+    scan_run = await service.trigger_scan(
+        context=context,
         repository_id=req.repository_id,
         target_branch=req.target_branch,
         source_branch=req.source_branch,
-        base_sha=req.base_commit,
-        head_sha=req.head_commit,
-        status="QUEUED",
+        base_commit=req.base_commit,
+        head_commit=req.head_commit,
+        changed_files=req.changed_files,
     )
-    db.add(scan_run)
 
-    # Outbox Pattern: Emit durable transactional outbox event
-    outbox_event = OutboxEvent(
-        id=str(uuid.uuid4()),
-        tenant_id=context.tenant_id,
-        aggregate_type="ScanRun",
-        aggregate_id=scan_id,
-        event_type="SCAN_ENQUEUED",
-        payload={
-            "scan_id": scan_id,
-            "repository_id": req.repository_id,
-            "base_commit": req.base_commit,
-            "head_commit": req.head_commit,
-            "changed_files": req.changed_files,
-            "tenant_id": context.tenant_id,
-        },
-    )
-    db.add(outbox_event)
-    await db.commit()
-
-    logger.info("scan_run_enqueued", scan_id=scan_id, repository_id=req.repository_id, tenant_id=context.tenant_id)
-    return {
-        "scan_id": scan_id,
+    response_payload = {
+        "scan_id": scan_run.id,
         "status": "QUEUED",
         "repository_id": req.repository_id,
         "created_at": datetime.now(UTC).isoformat(),
     }
+
+    if idempotency_key:
+        import json
+
+        rec = IdempotencyRecord(
+            id=str(uuid.uuid4()),
+            tenant_id=context.tenant_id,
+            idempotency_key=idempotency_key,
+            request_hash=req_hash,
+            response_code=202,
+            response_body=json.dumps(response_payload),
+            expires_at=datetime.now(UTC) + timedelta(hours=24),
+        )
+        db.add(rec)
+
+    await db.commit()
+    logger.info("scan_run_enqueued", scan_id=scan_run.id, repository_id=req.repository_id, tenant_id=context.tenant_id)
+    return response_payload
 
 
 @app.get("/api/v1/scans/{scan_id}", tags=["Scans"])
@@ -499,15 +500,8 @@ async def get_scan_status(
     context: SecurityContext = Depends(get_current_security_context),
 ) -> dict[str, Any]:
     """Retrieves execution status, metrics, and risk assessment for a scan run."""
-    res = await db.execute(
-        select(ScanRun).where(
-            ScanRun.id == scan_id,
-            ScanRun.tenant_id == context.tenant_id,
-        )
-    )
-    scan = res.scalar_one_or_none()
-    if not scan:
-        raise NotFoundError(f"Scan run '{scan_id}' not found.")
+    service = ScanService(db)
+    scan = await service.get_scan(context, scan_id)
 
     return {
         "id": scan.id,
@@ -531,22 +525,8 @@ async def get_scan_violations(
     context: SecurityContext = Depends(get_current_security_context),
 ) -> list[dict[str, Any]]:
     """Retrieves all detected semantic contract violations for a scan run."""
-    # Ensure scan exists and tenant has access
-    scan_res = await db.execute(
-        select(ScanRun).where(
-            ScanRun.id == scan_id,
-            ScanRun.tenant_id == context.tenant_id,
-        )
-    )
-    if not scan_res.scalar_one_or_none():
-        raise NotFoundError(f"Scan run '{scan_id}' not found.")
-
-    query = select(Violation).where(
-        Violation.scan_id == scan_id,
-        Violation.tenant_id == context.tenant_id,
-    )
-    result = await db.execute(query)
-    violations = result.scalars().all()
+    service = ScanService(db)
+    violations = await service.get_scan_violations(context, scan_id)
 
     return [
         {
@@ -562,6 +542,132 @@ async def get_scan_violations(
         }
         for v in violations
     ]
+
+
+# --- Integration Credentials Endpoints ---
+
+
+class CredentialStoreRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=128)
+    provider: str = Field(..., min_length=2, max_length=64)
+    secret: str = Field(..., min_length=1)
+    scopes: list[str] = Field(default_factory=list)
+
+
+@app.post("/api/v1/credentials", tags=["Credentials"], status_code=status.HTTP_201_CREATED)
+async def store_credential(
+    req: CredentialStoreRequest,
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(require_role(TenantRole.ADMIN)),
+) -> dict[str, Any]:
+    """Stores third-party integration credentials with AES-256-GCM encryption at rest."""
+    service = CredentialService(db)
+    cred = await service.store_credential(
+        context=context,
+        name=req.name,
+        provider=req.provider,
+        secret_plaintext=req.secret,
+        scopes=req.scopes,
+    )
+    await db.commit()
+    return {
+        "id": cred.id,
+        "name": cred.name,
+        "provider": cred.provider,
+        "key_id": cred.key_id,
+        "created_at": cred.created_at.isoformat(),
+    }
+
+
+@app.get("/api/v1/credentials", tags=["Credentials"])
+async def list_credentials(
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(get_current_security_context),
+) -> list[dict[str, Any]]:
+    """Lists credentials owned by the tenant without revealing secrets."""
+    service = CredentialService(db)
+    creds = await service.list_credentials(context)
+    return [
+        {
+            "id": c.id,
+            "name": c.name,
+            "provider": c.provider,
+            "key_id": c.key_id,
+            "scopes": c.scopes,
+            "created_at": c.created_at.isoformat(),
+        }
+        for c in creds
+    ]
+
+
+@app.get("/api/v1/credentials/{credential_id}/secret", tags=["Credentials"])
+async def get_decrypted_credential_secret(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(require_role(TenantRole.ENGINEER)),
+) -> dict[str, str]:
+    """Decrypts and returns the integration secret. Requires Analyst role."""
+    service = CredentialService(db)
+    secret = await service.get_decrypted_secret(context, credential_id)
+    return {"secret": secret}
+
+
+# --- Webhooks & File Upload Security Endpoints ---
+
+
+@app.post("/api/v1/webhooks/github", tags=["Webhooks"], status_code=status.HTTP_200_OK)
+async def github_webhook(
+    request: Request,
+    x_hub_signature_256: str | None = Header(None, alias="X-Hub-Signature-256"),
+    x_github_event: str | None = Header(None, alias="X-GitHub-Event"),
+    x_hub_delivery: str | None = Header(None, alias="X-GitHub-Delivery"),
+) -> dict[str, Any]:
+    """Verifies incoming GitHub webhook signatures and prevents forgery and replay attacks."""
+    payload_bytes = await request.body()
+    WebhookVerifier.verify_github_signature(
+        payload_bytes=payload_bytes,
+        signature_header=x_hub_signature_256,
+        secret=settings.GITHUB_WEBHOOK_SECRET,
+    )
+    logger.info("github_webhook_verified", webhook_event=x_github_event, delivery_id=x_hub_delivery)
+    return {"status": "ACCEPTED", "event": x_github_event}
+
+
+class UploadSpecRequest(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=256)
+    content_base64: str = Field(..., description="Base64 encoded file content")
+
+
+@app.post("/api/v1/contracts/upload", tags=["Contracts"], status_code=status.HTTP_201_CREATED)
+async def upload_contract_spec(
+    req: UploadSpecRequest,
+    context: SecurityContext = Depends(require_role(TenantRole.ENGINEER)),
+) -> dict[str, Any]:
+    """Uploads and validates an OpenAPI/AsyncAPI specification or ZIP archive against security constraints."""
+    import base64
+
+    try:
+        raw_bytes = base64.b64decode(req.content_base64)
+    except Exception as exc:
+        raise UploadSecurityError("Invalid base64 encoded content.") from exc
+
+    # 1. Size & Extension Checks
+    UploadValidator.validate_file_metadata(filename=req.filename, size_bytes=len(raw_bytes))
+
+    # 2. Magic Bytes Binary Execution Guard
+    UploadValidator.inspect_magic_bytes(content=raw_bytes, filename=req.filename)
+
+    # 3. Zip Slip & Archive Depth Inspection if ZIP
+    validated_files = []
+    if req.filename.lower().endswith(".zip"):
+        validated_files = UploadValidator.validate_zip_archive(archive_bytes=raw_bytes)
+
+    return {
+        "status": "VALIDATED",
+        "filename": req.filename,
+        "size_bytes": len(raw_bytes),
+        "archive_members": validated_files if validated_files else None,
+    }
 
 
 # --- OpenTelemetry OTLP Ingestion & Runtime Dependency Endpoints ---

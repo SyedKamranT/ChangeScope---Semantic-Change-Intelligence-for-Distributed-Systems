@@ -57,11 +57,20 @@ def decode_token(
     signing_key = key or settings.JWT_SECRET
     allowed_algorithms = algorithms or [settings.JWT_ALGORITHM]
 
+    # Explicit defense against "none" algorithm attacks
+    if "none" in [a.lower() for a in allowed_algorithms]:
+        raise AuthenticationError("Unsecured JWT algorithm 'none' is strictly prohibited.")
+
+    expected_issuer = issuer or settings.OIDC_ISSUER_URL
+    expected_audience = audience or settings.OIDC_AUDIENCE
+
     options: dict[str, Any] = {
         "verify_signature": True,
         "verify_exp": True,
         "verify_nbf": True,
         "verify_iat": True,
+        "verify_iss": bool(expected_issuer),
+        "verify_aud": bool(expected_audience),
     }
 
     try:
@@ -69,12 +78,16 @@ def decode_token(
             token,
             signing_key,
             algorithms=allowed_algorithms,
-            audience=audience or settings.OIDC_AUDIENCE,
-            issuer=issuer or settings.OIDC_ISSUER_URL,
+            audience=expected_audience,
+            issuer=expected_issuer,
             options=options,  # type: ignore[arg-type]
         )
     except jwt.ExpiredSignatureError as e:
         raise AuthenticationError("Authentication token has expired.") from e
+    except jwt.InvalidIssuerError as e:
+        raise AuthenticationError(f"Token issuer verification failed: {e}") from e
+    except jwt.InvalidAudienceError as e:
+        raise AuthenticationError(f"Token audience verification failed: {e}") from e
     except jwt.InvalidTokenError as e:
         raise AuthenticationError(f"Invalid authentication token: {e}") from e
 
@@ -92,4 +105,44 @@ def decode_token(
         exp=int(payload.get("exp", 0)),
         iss=payload.get("iss"),
         aud=payload.get("aud"),
+    )
+
+
+SESSION_COOKIE_NAME = "changescope_session"
+
+
+def set_secure_session_cookie(
+    response: Any,
+    token: str,
+    max_age_seconds: int = 86400,
+    secure: bool | None = None,
+) -> None:
+    """Sets a hardened, tamper-resistant HttpOnly session cookie."""
+    is_secure = (settings.ENVIRONMENT != "local") if secure is None else secure
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        max_age=max_age_seconds,
+        httponly=True,
+        secure=is_secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def get_session_cookie(request: Any) -> str | None:
+    """Extracts the session token from request cookies if present."""
+    if hasattr(request, "cookies"):
+        val = request.cookies.get(SESSION_COOKIE_NAME)
+        return str(val) if val is not None else None
+    return None
+
+
+def clear_session_cookie(response: Any) -> None:
+    """Clears the session cookie on logout."""
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        path="/",
     )

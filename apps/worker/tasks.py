@@ -86,11 +86,16 @@ async def execute_scan_async(
             logger.error("scan_run_not_found_for_execution", scan_id=scan_id)
             return {"status": "NOT_FOUND", "scan_id": scan_id}
 
-        repo_res = await session.execute(select(Repository).where(Repository.id == repo_id))
+        repo_res = await session.execute(
+            select(Repository).where(
+                Repository.id == repo_id,
+                Repository.tenant_id == scan.tenant_id,
+            )
+        )
         repo = repo_res.scalar_one_or_none()
         if not repo:
             scan.status = "FAILED"
-            scan.error_message = f"Repository '{repo_id}' not found."
+            scan.error_message = f"Repository '{repo_id}' not found or tenant boundary violated."
             await session.commit()
             return {"status": "FAILED", "error": scan.error_message}
 

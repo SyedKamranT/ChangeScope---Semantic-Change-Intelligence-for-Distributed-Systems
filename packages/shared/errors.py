@@ -27,10 +27,23 @@ class ChangeScopeBaseError(Exception):
     error_type: str = "https://changescope.io/errors/internal-server-error"
     title: str = "Internal Server Error"
 
-    def __init__(self, message: str, invalid_params: list[dict[str, Any]] | None = None):
+    def __init__(
+        self,
+        message: str,
+        invalid_params: list[dict[str, Any]] | None = None,
+        status_code: int | None = None,
+        error_type: str | None = None,
+        title: str | None = None,
+    ):
         super().__init__(message)
         self.message = message
         self.invalid_params = invalid_params or []
+        if status_code is not None:
+            self.status_code = status_code
+        if error_type is not None:
+            self.error_type = error_type
+        if title is not None:
+            self.title = title
 
 
 class AuthenticationError(ChangeScopeBaseError):

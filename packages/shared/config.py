@@ -22,6 +22,14 @@ class AppSettings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    CORS_ORIGINS: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    )
 
     # Canonical Relational Database (PostgreSQL 17)
     DATABASE_URL: str = "sqlite+aiosqlite:///./changescope.db"

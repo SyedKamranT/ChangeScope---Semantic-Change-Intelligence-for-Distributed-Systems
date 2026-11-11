@@ -343,3 +343,70 @@ class RuntimeTraceSpan(Base):
     environment: Mapped[str] = mapped_column(String(64), default="production")
     attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class IntegrationCredential(Base):
+    """Encrypted third-party integration credential owned by a tenant."""
+
+    __tablename__ = "integration_credentials"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_integration_credential_tenant_name"),
+        Index("idx_credentials_tenant_provider", "tenant_id", "provider"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)  # GITHUB, GITLAB, BITBUCKET, SLACK
+    encrypted_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    key_id: Mapped[str] = mapped_column(String(64), nullable=False, default="v1")
+    scopes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class AuditLog(Base):
+    """Immutable audit log recording security-critical tenant actions."""
+
+    __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("idx_audit_logs_tenant_time", "tenant_id", "created_at"),
+        Index("idx_audit_logs_actor", "actor_id"),
+        Index("idx_audit_logs_event_type", "event_type"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    actor_role: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    client_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="SUCCESS")  # SUCCESS, DENIED, FAILED
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class IdempotencyRecord(Base):
+    """Deduplication and cached response store for idempotent mutating API requests."""
+
+    __tablename__ = "idempotency_records"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_idempotency_tenant_key"),
+        Index("idx_idempotency_expires", "expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    response_body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
