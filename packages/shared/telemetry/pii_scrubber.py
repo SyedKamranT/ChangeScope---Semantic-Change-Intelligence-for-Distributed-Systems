@@ -61,7 +61,8 @@ class PIIScrubber:
                 scrubbed[k] = cls.scrub_attributes(v)
             elif isinstance(v, list):
                 scrubbed[k] = [
-                    cls.scrub_attributes(item) if isinstance(item, dict)
+                    cls.scrub_attributes(item)
+                    if isinstance(item, dict)
                     else (cls.scrub_string(item) if isinstance(item, str) else item)
                     for item in v
                 ]

@@ -21,6 +21,12 @@ from packages.shared.errors import (
     ServiceUnavailableError,
     problem_detail_response,
 )
+from packages.shared.impact import (
+    ChangeSetInput,
+    DependencyKnowledgeGraph,
+    ImpactReasoningEngine,
+    ImpactReasoningResult,
+)
 from packages.shared.logger import configure_structured_logging, logger
 from packages.shared.models import (
     OutboxEvent,
@@ -738,9 +744,7 @@ async def get_runtime_graph(
     res = await db.execute(stmt)
     deps = res.scalars().all()
 
-    services = sorted(
-        {d.caller_service_name for d in deps} | {d.callee_service_name for d in deps}
-    )
+    services = sorted({d.caller_service_name for d in deps} | {d.callee_service_name for d in deps})
 
     return {
         "tenant_id": context.tenant_id,
@@ -804,3 +808,65 @@ async def get_dependency_correlations(
 
     correlated = RuntimeCorrelationEngine.correlate_dependencies(observed)
     return [c.model_dump() for c in correlated]
+
+
+# --- Deterministic Impact Reasoning Endpoints ---
+
+
+@app.post("/api/v1/impact/evaluate", tags=["Impact Analysis"], response_model=ImpactReasoningResult)
+async def evaluate_changeset_impact(
+    changeset: ChangeSetInput,
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(require_role(TenantRole.ENGINEER)),
+) -> ImpactReasoningResult:
+    """Evaluates multi-hop impact and deterministic risk for a proposed ChangeSet."""
+    changeset.tenant_id = context.tenant_id
+    graph = DependencyKnowledgeGraph(tenant_id=context.tenant_id)
+
+    # 1. Load runtime dependencies
+    dep_stmt = select(RuntimeDependency).where(RuntimeDependency.tenant_id == context.tenant_id)
+    runtime_deps = (await db.execute(dep_stmt)).scalars().all()
+    for d in runtime_deps:
+        graph.add_node(
+            node_id=d.caller_service_name,
+            name=d.caller_service_name,
+            entity_type="Service",
+        )
+        graph.add_node(
+            node_id=d.callee_service_name,
+            name=d.callee_service_name,
+            entity_type="Service" if not d.callee_service_name.startswith("db:") else "Database",
+        )
+        rel_type = "READS" if d.protocol == "DATABASE" else ("PUBLISHES" if d.protocol == "MESSAGING" else "CALLS")
+        graph.add_edge(
+            source_id=d.caller_service_name,
+            target_id=d.callee_service_name,
+            relationship_type=rel_type,
+            confidence=1.0,
+            provenance="RUNTIME_OBSERVED",
+            is_observed=True,
+            call_count_7d=d.call_count_7d,
+            p95_latency_ms=d.p95_latency_ms,
+            last_observed_at=d.last_observed_at,
+            evidence_refs=[f"Trace exemplar: {d.exemplar_trace_id}"] if d.exemplar_trace_id else [],
+        )
+
+    # 2. Load certified ontology relationships
+    from packages.shared.ontology_models import OntologyRelationship
+
+    rel_stmt = select(OntologyRelationship).where(OntologyRelationship.tenant_id == context.tenant_id)
+    ontology_rels = (await db.execute(rel_stmt)).scalars().all()
+    for rel in ontology_rels:
+        graph.add_edge(
+            source_id=rel.source_id,
+            target_id=rel.target_id,
+            relationship_type=rel.rel_type,
+            confidence=rel.confidence,
+            provenance=rel.provenance,
+            valid_from=rel.valid_from,
+            valid_to=rel.valid_to,
+            evidence_refs=rel.evidence_refs or [],
+        )
+
+    engine = ImpactReasoningEngine(graph=graph)
+    return engine.evaluate_changeset(changeset)

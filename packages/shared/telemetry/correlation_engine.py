@@ -42,7 +42,9 @@ class RuntimeCorrelationEngine:
             static_by_path.setdefault(sc.url_or_path, []).append(sc)
 
         # Index OpenAPI endpoints by "METHOD PATH"
-        openapi_set = {f"{ep['method']} {ep['path_template']}" for ep in endpoints if "method" in ep and "path_template" in ep}
+        openapi_set = {
+            f"{ep['method']} {ep['path_template']}" for ep in endpoints if "method" in ep and "path_template" in ep
+        }
         openapi_paths = {ep["path_template"] for ep in endpoints if "path_template" in ep}
 
         # Index AsyncAPI destinations
@@ -57,8 +59,11 @@ class RuntimeCorrelationEngine:
 
             # Check static code alignment
             matching_static = [
-                c for c in static_calls
-                if route in c.url_or_path or c.url_or_path.rstrip("/") in route or obs.callee_service_name in c.url_or_path
+                c
+                for c in static_calls
+                if route in c.url_or_path
+                or c.url_or_path.rstrip("/") in route
+                or obs.callee_service_name in c.url_or_path
             ]
             static_confirmed = len(matching_static) > 0
             if static_confirmed:
@@ -77,11 +82,13 @@ class RuntimeCorrelationEngine:
             )
 
             status = (
-                CorrelationStatus.OBSERVED_AND_STATIC_CONFIRMED
-                if static_confirmed
-                else CorrelationStatus.RUNTIME_ONLY
+                CorrelationStatus.OBSERVED_AND_STATIC_CONFIRMED if static_confirmed else CorrelationStatus.RUNTIME_ONLY
             )
-            confidence = 1.0 if (static_confirmed and (openapi_matched or asyncapi_matched)) else (0.95 if static_confirmed else 0.90)
+            confidence = (
+                1.0
+                if (static_confirmed and (openapi_matched or asyncapi_matched))
+                else (0.95 if static_confirmed else 0.90)
+            )
 
             exemplar_call = matching_static[0] if matching_static else None
 
@@ -146,7 +153,9 @@ class RuntimeCorrelationEngine:
         candidates: list[OntologyCandidate] = []
 
         for obs in observed_dependencies:
-            evidence_str = "; ".join(obs.evidence_citations) if obs.evidence_citations else f"Trace {obs.exemplar_trace_id}"
+            evidence_str = (
+                "; ".join(obs.evidence_citations) if obs.evidence_citations else f"Trace {obs.exemplar_trace_id}"
+            )
             rel_type = (
                 RelationshipType.READS.value
                 if obs.protocol == ProtocolType.DATABASE
