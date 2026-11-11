@@ -5,28 +5,84 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.15);
+  color: #09090b;
 }
 
 body {
   margin: 0;
-  background-color: #090d16;
-  color: #f1f5f9;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: #fafafa;
+  color: #09090b;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom styling for xyflow dark mode */
+/* Luxury Light Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* React Flow White Theme Styling */
 .react-flow__background {
-  background-color: #090d16 !important;
+  background-color: #ffffff !important;
+}
+
+.react-flow__controls {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+  border: 1px solid #e2e8f0 !important;
 }
 
 .react-flow__controls button {
-  background-color: #101726 !important;
-  color: #94a3b8 !important;
-  border-bottom: 1px solid #1f293d !important;
+  background-color: #ffffff !important;
+  color: #475569 !important;
+  border: none !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  transition: all 120ms var(--ease-out) !important;
 }
 
 .react-flow__controls button:hover {
-  background-color: #1e293b !important;
-  color: #f8fafc !important;
+  background-color: #f8fafc !important;
+  color: #09090b !important;
+}
+
+.react-flow__minimap {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.06) !important;
+  background-color: #ffffff !important;
+}
+
+.react-flow__edge-path {
+  stroke: #94a3b8;
+  stroke-width: 1.5;
+}
+
+/* Tabular figures for numbers, hashes, and metrics */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }

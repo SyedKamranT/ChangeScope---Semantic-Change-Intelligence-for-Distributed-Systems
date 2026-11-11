@@ -104,6 +104,12 @@ class CodebaseAnalyzer:
 
         # 1. Walk directory hierarchy
         for path in root.rglob("*"):
+            if path.is_symlink():
+                if not str(path.resolve()).startswith(str(root)):
+                    partial_errors.append(
+                        {"file_path": path.name, "error": "Symlink pointing outside sandbox skipped."}
+                    )
+                    continue
             if not path.is_file():
                 continue
 

@@ -143,3 +143,20 @@ def test_tenant_storage_path_isolation(tmp_path: Path):
             commit_sha=sha,
             base_dir=tmp_path,
         )
+
+
+def test_zip_symlink_entry_rejected(tmp_path: Path):
+    """Verifies that ZIP entries flagged with Unix S_IFLNK symlink mode are blocked."""
+    import stat
+
+    malicious_zip = tmp_path / "zip_symlink.zip"
+    dest_dir = tmp_path / "sandbox_zip"
+
+    info = zipfile.ZipInfo("secret_link.txt")
+    info.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with zipfile.ZipFile(malicious_zip, "w") as zf:
+        zf.writestr(info, "/etc/passwd")
+
+    with pytest.raises(SecurityViolationError) as exc:
+        RepoSafetyGuard.safe_extract_archive(malicious_zip, dest_dir)
+    assert "Symlink entry prohibited" in str(exc.value)

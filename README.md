@@ -5,7 +5,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-336791.svg)](https://www.postgresql.org/)
 [![Neo4j 5.20](https://img.shields.io/badge/Neo4j-5.20+-008CC1.svg)](https://neo4j.com/)
-[![Tests Passing](https://img.shields.io/badge/tests-26%2F26%20passing-brightgreen.svg)]()
+[![Tests Passing](https://img.shields.io/badge/tests-240%2B%20offline%20suite-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 > **Mission:** Identify hidden technical dependencies, semantic contract violations, and operational blast radius before software changes reach production.
@@ -104,30 +104,29 @@ Experience the complete change-intelligence lifecycle (AST parsing, contract der
 .\.venv\Scripts\python.exe demo_pipeline.py
 ```
 
-### 2. Run the Automated Test Suite (26 Tests)
+### 2. Run the Automated Test Suite (244+ Pytest + 11 Playwright E2E)
 ChangeScope runs 100% offline without live external API keys:
 ```powershell
 .\.venv\Scripts\pytest.exe -v tests/
 ```
 
-### 3. Start the FastAPI Gateway & MCP Server
+### 3. Start the FastAPI Production Gateway
 ```powershell
-.\.venv\Scripts\uvicorn.exe changescope.main:app --host 0.0.0.0 --port 8000 --reload
+.\.venv\Scripts\uvicorn.exe apps.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 * Interactive OpenAPI Documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
-* Health Check: [http://localhost:8000/health/live](http://localhost:8000/health/live)
-* Model Context Protocol (MCP) Endpoint: [http://localhost:8000/mcp](http://localhost:8000/mcp)
+* Liveness / Readiness Probes: [http://localhost:8000/health/live](http://localhost:8000/health/live), [http://localhost:8000/health/ready](http://localhost:8000/health/ready)
 
 ### 4. Start the React 19 Frontend Dashboard
 ```powershell
-cd frontend
-npm run dev
+cd apps/web
+pnpm dev
 ```
 * Dashboard URL: [http://localhost:5173](http://localhost:5173)
 
 ### 5. Full Containerized Deployment (Docker Compose)
 ```powershell
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f infrastructure/docker/docker-compose.yml up -d
 ```
 Spins up PostgreSQL 17, Neo4j 5.20 (with APOC), Redis 7, Celery Worker, FastAPI Gateway, and React 19 SPA.
 

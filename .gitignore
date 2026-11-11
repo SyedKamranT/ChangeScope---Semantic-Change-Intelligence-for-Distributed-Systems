@@ -56,6 +56,10 @@ htmlcov/
 coverage.xml
 nosetests.xml
 benchmark_results/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
 
 # ------------------------------------------------------------------------------
 # 4. Node.js, pnpm & Frontend Build Artifacts
@@ -156,3 +160,11 @@ scratch/
 .changescope_cache/
 *.log
 logs/
+
+# ------------------------------------------------------------------------------
+# 11. Local AI Agent Skills, Hooks & Tooling
+# ------------------------------------------------------------------------------
+.agents/skills/
+.codex/
+skills-lock.json
+.playwright-mcp/

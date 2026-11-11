@@ -277,8 +277,8 @@ class NvidiaAutoOntologyProvider(OntologyProvider):
                         local_result.warnings.append(
                             f"NVIDIA Auto-Ontology reports query not answerable: {data.get('reason')}"
                         )
-            except ServiceUnavailableError:
-                pass
+            except ServiceUnavailableError as exc:
+                logger.warning("nvidia_check_answerable_skipped", error=str(exc))
 
         return local_result
 

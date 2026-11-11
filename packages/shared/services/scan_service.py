@@ -136,3 +136,21 @@ class ScanService:
         )
         res = await self.db.execute(stmt)
         return list(res.scalars().all())
+
+    async def list_scans(
+        self,
+        context: SecurityContext,
+        repository_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ScanRun]:
+        """Lists scan runs for the tenant with pagination and optional repository filter."""
+        context.assert_role(TenantRole.VIEWER)
+        stmt = select(ScanRun).where(ScanRun.tenant_id == context.tenant_id)
+        if repository_id:
+            stmt = stmt.where(ScanRun.repository_id == repository_id)
+        safe_limit = min(max(1, limit), 100)
+        safe_offset = max(0, offset)
+        stmt = stmt.order_by(ScanRun.started_at.desc()).limit(safe_limit).offset(safe_offset)
+        res = await self.db.execute(stmt)
+        return list(res.scalars().all())

@@ -2,6 +2,7 @@
 
 import os
 import re
+import stat
 import tarfile
 import zipfile
 from pathlib import Path
@@ -146,6 +147,11 @@ class RepoSafetyGuard:
                     target_path = (dest / filename).resolve()
                     if not str(target_path).startswith(str(dest)):
                         raise SecurityViolationError(f"ZipSlip traversal attempt outside destination: '{filename}'")
+
+                    # 1b. Symlink Defense inside ZIP (Unix external_attr mode S_IFLNK)
+                    unix_mode = member.external_attr >> 16
+                    if stat.S_ISLNK(unix_mode):
+                        raise SecurityViolationError(f"Symlink entry prohibited inside ZIP archive: '{filename}'")
 
                     # 2. Size Bomb Defense
                     if member.file_size > max_single:

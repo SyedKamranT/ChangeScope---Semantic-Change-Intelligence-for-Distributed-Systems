@@ -103,6 +103,15 @@ async def test_pipeline_local_git_ingestion(sample_tenant_and_repo, db_session: 
     persisted_cands = list((await db_session.execute(cand_stmt)).scalars().all())
     assert len(persisted_cands) >= 1
 
+    # Zero-Source-Code-Retention check: sandbox workspace must be wiped cleanly
+    from packages.shared.config import settings
+
+    storage_root = Path(settings.STORAGE_BASE_DIR).resolve()
+    sandbox_dir = (
+        storage_root / "tenants" / tenant.id / "workspaces" / workspace.id / "repos" / repo.id / scan_run.head_sha
+    )
+    assert not sandbox_dir.exists()
+
 
 @pytest.mark.asyncio
 async def test_pipeline_archive_ingestion(sample_tenant_and_repo, tmp_path: Path):
@@ -310,3 +319,39 @@ def test_process_scan_task_celery_registration():
     assert process_scan_task.name == "apps.worker.tasks.process_scan_task"
     assert process_scan_task.max_retries == 3
     assert process_scan_task.default_retry_delay == 5
+
+
+@pytest.mark.asyncio
+async def test_outbox_projector_mock_and_retry_behavior(
+    sample_tenant_and_repo, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Verifies outbox projection respects NEO4J_MOCK_MODE and tracks retries when Neo4j is unreachable."""
+    from packages.shared.config import settings
+    from packages.shared.services.graph_service import GraphQueryService
+
+    tenant, _, _ = sample_tenant_and_repo
+
+    monkeypatch.setattr(settings, "NEO4J_MOCK_MODE", True)
+    res_mock = await GraphQueryService.project_outbox_event(
+        tenant_id=tenant.id,
+        aggregate_type="ScanRun",
+        aggregate_id="scan-mock-1",
+        event_type="scan.completed",
+        payload={},
+    )
+    assert res_mock == "MOCK_PROJECTED"
+
+    # When NEO4J_MOCK_MODE=False and Neo4j is down, projection must raise rather than silently faking success
+    from neo4j.exceptions import DriverError, Neo4jError, ServiceUnavailable
+
+    monkeypatch.setattr(settings, "NEO4J_MOCK_MODE", False)
+    monkeypatch.setattr(settings, "NEO4J_URI", "bolt://127.0.0.1:59999")
+    monkeypatch.setattr(settings, "NEO4J_CONNECTION_TIMEOUT", 1.0)
+    with pytest.raises((OSError, Neo4jError, DriverError, ServiceUnavailable)):
+        await GraphQueryService.project_outbox_event(
+            tenant_id=tenant.id,
+            aggregate_type="ScanRun",
+            aggregate_id="scan-real-1",
+            event_type="scan.completed",
+            payload={},
+        )

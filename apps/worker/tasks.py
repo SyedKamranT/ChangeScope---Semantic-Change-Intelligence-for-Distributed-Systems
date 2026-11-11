@@ -11,8 +11,18 @@ from sqlalchemy import delete, select
 
 from apps.worker.app import celery_app
 from packages.shared.database import async_session_factory
+from packages.shared.impact import (
+    ChangeSetInput,
+    ImpactReasoningEngine,
+    ProposedChange,
+)
 from packages.shared.ingestion.models import IngestionSourceType
 from packages.shared.ingestion.pipeline import IngestionPipeline
+from packages.shared.integrations.github import (
+    GitHubClient,
+    GitHubReportFormatter,
+    sanitize_secret,
+)
 from packages.shared.logger import logger
 from packages.shared.models import (
     OutboxEvent,
@@ -21,6 +31,8 @@ from packages.shared.models import (
     RuntimeTraceSpan,
     ScanRun,
 )
+from packages.shared.remediation import RemediationOrchestrator
+from packages.shared.services.graph_service import GraphQueryService
 from packages.shared.telemetry.dependency_builder import DependencyBuilder
 from packages.shared.telemetry.models import NormalizedSpan, SpanKind
 
@@ -49,8 +61,13 @@ def process_outbox_task() -> dict[str, int]:
 
             for ev in pending_events:
                 try:
-                    logger.info("projecting_outbox_event", event_id=ev.id, event_type=ev.event_type)
-                    # Mark outbox event processed after successful projection
+                    await GraphQueryService.project_outbox_event(
+                        tenant_id=ev.tenant_id,
+                        aggregate_type=ev.aggregate_type,
+                        aggregate_id=ev.aggregate_id,
+                        event_type=ev.event_type,
+                        payload=ev.payload or {},
+                    )
                     ev.status = "PROCESSED"
                     ev.processed_at = datetime.now(UTC)
                 except Exception as exc:
@@ -248,6 +265,188 @@ def process_scan_task(
             head_sha=head_sha,
             source_type=source_type,
             source_location=source_location,
+        )
+    )
+    return result if isinstance(result, dict) else {"status": "UNKNOWN"}
+
+
+async def execute_github_pr_analysis_async(
+    scan_id: str,
+    repo_id: str,
+    base_sha: str,
+    head_sha: str,
+    pr_number: int | None = None,
+    installation_id: int | None = None,
+) -> dict[str, Any]:
+    """Asynchronously runs change analysis on a GitHub PR and publishes findings back to GitHub."""
+    start_time = time.perf_counter()
+    async with async_session_factory() as session:
+        # 1. Fetch ScanRun and Repository
+        scan_res = await session.execute(select(ScanRun).where(ScanRun.id == scan_id))
+        scan = scan_res.scalar_one_or_none()
+        if not scan:
+            logger.error("github_pr_scan_not_found", scan_id=scan_id)
+            return {"status": "NOT_FOUND", "scan_id": scan_id}
+
+        repo_res = await session.execute(
+            select(Repository).where(
+                Repository.id == repo_id,
+                Repository.tenant_id == scan.tenant_id,
+            )
+        )
+        repo = repo_res.scalar_one_or_none()
+        if not repo:
+            scan.status = "FAILED"
+            scan.error_message = f"Repository '{repo_id}' not found or tenant boundary violated."
+            await session.commit()
+            return {"status": "FAILED", "error": scan.error_message}
+
+        scan.status = "IN_PROGRESS"
+        await session.commit()
+
+        try:
+            # 2. Fetch modified files from GitHub PR if available
+            client = GitHubClient()
+            modified_files: list[str] = []
+            if pr_number:
+                try:
+                    files = await client.get_pull_request_files(repo.name, pr_number, installation_id=installation_id)
+                    modified_files = [f.filename for f in files]
+                except Exception as exc:
+                    logger.warning("github_pr_files_fetch_skipped", error=sanitize_secret(str(exc)))
+
+            # 3. Deterministic Impact Reasoning against hydrated tenant knowledge graph
+            graph = await GraphQueryService.build_tenant_graph(session, tenant_id=scan.tenant_id)
+            engine = ImpactReasoningEngine(graph=graph)
+            change_set = ChangeSetInput(
+                change_set_id=f"pr-{pr_number or scan_id[:8]}",
+                tenant_id=scan.tenant_id,
+                repository_id=repo.id,
+                base_commit=base_sha,
+                head_commit=head_sha,
+                changes=[
+                    ProposedChange(
+                        entity_id=fn,
+                        entity_name=fn,
+                        entity_type="file",
+                        change_type="MODIFIED",
+                    )
+                    for fn in modified_files
+                ],
+            )
+            impact_res = engine.evaluate_changeset(change_set)
+
+            # 4. Remediation Test Recommendations
+            orchestrator = RemediationOrchestrator()
+            report = orchestrator.generate_incident_prevention_report(
+                scan_id=scan_id,
+                tenant_id=scan.tenant_id,
+                impact_result=impact_res,
+                findings=[],
+            )
+
+            # 5. Format GitHub PR Output with all 8 sections
+            formatter = GitHubReportFormatter(
+                scan_id=scan_id,
+                repo_name=repo.name,
+                base_sha=base_sha,
+                head_sha=head_sha,
+                risk_score=impact_res.risk_score,
+                risk_level=impact_res.risk_level,
+                findings=[],
+                impact_result=impact_res,
+                incident_report=report,
+                pr_number=pr_number,
+            )
+            markdown_report = formatter.build_markdown_report()
+            check_run_payload = formatter.build_check_run_payload()
+
+            # 6. Publish Check Run and PR comment (informational, non-blocking)
+            try:
+                await client.create_check_run(repo.name, check_run_payload, installation_id=installation_id)
+            except Exception as exc:
+                logger.warning("github_check_run_publish_skipped", error=sanitize_secret(str(exc)))
+
+            if pr_number:
+                try:
+                    await client.post_pr_comment(repo.name, pr_number, markdown_report, installation_id=installation_id)
+                except Exception as exc:
+                    logger.warning("github_pr_comment_publish_skipped", error=sanitize_secret(str(exc)))
+
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            scan.status = "COMPLETED"
+            scan.risk_score = impact_res.risk_score
+            scan.risk_level = impact_res.risk_level
+            scan.completed_at = datetime.now(UTC)
+            scan.duration_ms = duration_ms
+
+            # 7. Outbox notification
+            outbox_ev = OutboxEvent(
+                id=str(uuid.uuid4()),
+                tenant_id=scan.tenant_id,
+                aggregate_type="ScanRun",
+                aggregate_id=scan.id,
+                event_type="scan.completed",
+                payload={
+                    "scan_id": scan.id,
+                    "repo_id": repo.id,
+                    "pr_number": pr_number,
+                    "risk_score": scan.risk_score,
+                    "risk_level": scan.risk_level,
+                },
+            )
+            session.add(outbox_ev)
+            await session.commit()
+
+            logger.info(
+                "github_pr_analysis_completed",
+                scan_id=scan_id,
+                repo_id=repo.id,
+                pr_number=pr_number,
+                risk_score=scan.risk_score,
+            )
+            return {
+                "status": "COMPLETED",
+                "scan_id": scan_id,
+                "risk_score": scan.risk_score,
+                "risk_level": scan.risk_level,
+            }
+
+        except Exception as exc:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            scan.status = "FAILED"
+            scan.error_message = sanitize_secret(str(exc))
+            scan.completed_at = datetime.now(UTC)
+            scan.duration_ms = duration_ms
+            await session.commit()
+            logger.error("github_pr_analysis_failed", scan_id=scan_id, error=scan.error_message)
+            return {"status": "FAILED", "scan_id": scan_id, "error": scan.error_message}
+
+
+@celery_app.task(
+    bind=True,
+    name="apps.worker.tasks.process_github_pr_task",
+    max_retries=3,
+    default_retry_delay=5,
+)
+def process_github_pr_task(
+    self: Task,
+    scan_id: str,
+    repo_id: str,
+    base_sha: str,
+    head_sha: str,
+    pr_number: int | None = None,
+    installation_id: int | None = None,
+) -> dict[str, Any]:
+    """Celery background worker task for analyzing GitHub PRs and publishing findings."""
+    result = run_async(
+        execute_github_pr_analysis_async(
+            scan_id=scan_id,
+            repo_id=repo_id,
+            base_sha=base_sha,
+            head_sha=head_sha,
+            pr_number=pr_number,
+            installation_id=installation_id,
         )
     )
     return result if isinstance(result, dict) else {"status": "UNKNOWN"}

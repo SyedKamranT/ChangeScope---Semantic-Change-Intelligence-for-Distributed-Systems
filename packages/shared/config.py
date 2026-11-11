@@ -56,6 +56,14 @@ class AppSettings(BaseSettings):
     OIDC_ISSUER_URL: str | None = None
     OIDC_AUDIENCE: str | None = None
     GITHUB_WEBHOOK_SECRET: str = "changescope_webhook_secret_dev"
+    GITHUB_APP_ID: str | None = None
+    GITHUB_APP_PRIVATE_KEY: str | None = None
+    GITHUB_APP_CLIENT_ID: str | None = None
+    GITHUB_APP_CLIENT_SECRET: str | None = None
+    GITHUB_API_BASE_URL: str = "https://api.github.com"
+    GITHUB_RATE_LIMIT_RETRIES: int = Field(default=3, ge=0, le=10)
+    GITHUB_CHECK_RUN_CONCLUSION_DEFAULT: Literal["neutral", "success", "action_required"] = "neutral"
+    FRONTEND_URL: str = "http://localhost:5173"
 
     # Default Tenant for single-tenant local/dev environments
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000001"

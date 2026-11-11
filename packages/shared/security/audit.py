@@ -56,3 +56,24 @@ class AuditLogger:
             status=status,
         )
         return event_entry
+
+    @classmethod
+    async def list_events(
+        cls,
+        db: AsyncSession,
+        tenant_id: str,
+        event_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[AuditLog]:
+        """Queries tenant-scoped audit logs with pagination."""
+        from sqlalchemy import select
+
+        stmt = select(AuditLog).where(AuditLog.tenant_id == tenant_id)
+        if event_type:
+            stmt = stmt.where(AuditLog.event_type == event_type)
+        safe_limit = min(max(1, limit), 100)
+        safe_offset = max(0, offset)
+        stmt = stmt.order_by(AuditLog.created_at.desc()).limit(safe_limit).offset(safe_offset)
+        res = await db.execute(stmt)
+        return list(res.scalars().all())

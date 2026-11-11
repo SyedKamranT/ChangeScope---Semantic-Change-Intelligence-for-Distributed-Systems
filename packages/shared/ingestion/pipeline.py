@@ -1,5 +1,6 @@
 """End-to-End Ingestion Pipeline Orchestrator."""
 
+import shutil
 import uuid
 from pathlib import Path
 
@@ -45,40 +46,44 @@ class IngestionPipeline:
             commit_sha=target_sha,
         )
 
-        # 2. Extract source files based on source type
-        extracted_dir: Path
-        final_sha: str
+        # 2. Extract source files & execute static analysis with guaranteed ephemeral wipe
+        try:
+            extracted_dir: Path
+            final_sha: str
 
-        if source_type == IngestionSourceType.LOCAL_GIT:
-            extracted_dir, final_sha = LocalGitSource.ingest_local_repo(
-                source_path=source_location,
-                destination_dir=dest_dir,
-                commit_sha=commit_sha,
-            )
-        elif source_type == IngestionSourceType.UPLOADED_ARCHIVE:
-            extracted_dir, final_sha = ArchiveSource.ingest_archive(
-                archive_path=source_location,
-                destination_dir=dest_dir,
-                commit_sha=commit_sha,
-            )
-        elif source_type == IngestionSourceType.GITHUB_REPO:
-            extracted_dir, final_sha = GitHubRepoSource.ingest_remote_repo(
-                clone_url=str(source_location),
-                commit_sha=commit_sha or "0" * 40,
-                destination_dir=dest_dir,
-                auth_token=auth_token,
-            )
-        else:
-            extracted_dir, final_sha = dest_dir, target_sha
+            if source_type == IngestionSourceType.LOCAL_GIT:
+                extracted_dir, final_sha = LocalGitSource.ingest_local_repo(
+                    source_path=source_location,
+                    destination_dir=dest_dir,
+                    commit_sha=commit_sha,
+                )
+            elif source_type == IngestionSourceType.UPLOADED_ARCHIVE:
+                extracted_dir, final_sha = ArchiveSource.ingest_archive(
+                    archive_path=source_location,
+                    destination_dir=dest_dir,
+                    commit_sha=commit_sha,
+                )
+            elif source_type == IngestionSourceType.GITHUB_REPO:
+                extracted_dir, final_sha = GitHubRepoSource.ingest_remote_repo(
+                    clone_url=str(source_location),
+                    commit_sha=commit_sha or "0" * 40,
+                    destination_dir=dest_dir,
+                    auth_token=auth_token,
+                )
+            else:
+                extracted_dir, final_sha = dest_dir, target_sha
 
-        # 3. Execute deterministic static analysis
-        artifact = self.analyzer.analyze_repository(
-            repo_root=extracted_dir,
-            tenant_id=tenant_id,
-            repository_id=repository_id,
-            commit_sha=final_sha,
-            source_type=source_type,
-        )
+            # 3. Execute deterministic static analysis
+            artifact = self.analyzer.analyze_repository(
+                repo_root=extracted_dir,
+                tenant_id=tenant_id,
+                repository_id=repository_id,
+                commit_sha=final_sha,
+                source_type=source_type,
+            )
+        finally:
+            # Zero-Source-Code-Retention invariant (ADR-008): wipe ephemeral sandbox immediately after extraction
+            shutil.rmtree(dest_dir, ignore_errors=True)
 
         # 4. Persist extracted AST Symbols and Candidates to canonical relational database
         async with self.session_maker() as session:

@@ -4,7 +4,7 @@ from collections.abc import Callable
 from enum import StrEnum
 from typing import Any
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
@@ -100,7 +100,6 @@ class SecurityContext(BaseModel):
 async def get_current_security_context(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
-    x_tenant_id: str | None = Header(None, alias="X-Tenant-ID"),
 ) -> SecurityContext:
     """FastAPI dependency to extract, cryptographically verify, and construct the SecurityContext."""
     raw_token: str | None = None
@@ -135,10 +134,8 @@ async def get_current_security_context(
             algorithms=[settings.JWT_ALGORITHM],
         )
 
-    # Use header tenant_id only if verified token allows multi-tenant or default tenant matches
+    # Always anchor tenant identity strictly to the cryptographically verified JWT claim
     tenant_id = payload.tenant_id
-    if x_tenant_id and tenant_id == settings.DEFAULT_TENANT_ID:
-        tenant_id = x_tenant_id
 
     return SecurityContext(
         user_id=payload.sub,

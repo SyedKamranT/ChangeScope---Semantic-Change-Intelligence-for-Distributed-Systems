@@ -102,7 +102,7 @@ async def test_remediation_endpoint_authenticated(client: AsyncClient):
         risk_breakdown=RiskBreakdown(
             base_severity_score=50.0,
             reachability_score=1.2,
-            usage_score=1.3,
+            usage_multiplier=1.3,
             criticality_score=1.0,
             exposure_factor=1.0,
             freshness_factor=1.0,

@@ -1,297 +1,180 @@
-import { useState } from 'react'
-import { Navbar } from './components/Navbar'
-import { GraphView } from './components/GraphView'
-import { ViolationsTable, ViolationItem } from './components/ViolationsTable'
-import { ScanDetails } from './components/ScanDetails'
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
+import { AppShell } from './components/layout/AppShell'
+import { NavViewKey } from './components/layout/AppSidebar'
+import { OverviewDashboard } from './components/views/OverviewDashboard'
+import { RepositoryManagement } from './components/views/RepositoryManagement'
+import { RepositoryDetail } from './components/views/RepositoryDetail'
+import { PullRequestAnalysis } from './components/views/PullRequestAnalysis'
+import { ChangeImpactExplorer } from './components/views/ChangeImpactExplorer'
+import { SemanticDriftFindings } from './components/views/SemanticDriftFindings'
+import { RuntimeDependencyGraph } from './components/views/RuntimeDependencyGraph'
+import { OntologyExplorer } from './components/views/OntologyExplorer'
+import { WorkflowImpactView } from './components/views/WorkflowImpactView'
+import { EvidenceExplorer } from './components/views/EvidenceExplorer'
+import { TestRecommendations } from './components/views/TestRecommendations'
+import { AnalysisHistory } from './components/views/AnalysisHistory'
+import { IntegrationManagement } from './components/views/IntegrationManagement'
+import { WorkspaceTeamSettings } from './components/views/WorkspaceTeamSettings'
+import { AuditLogsView } from './components/views/AuditLogsView'
 import { TriggerScanModal } from './components/TriggerScanModal'
-import { GitPullRequest, Layers, AlertCircle, CheckCircle2 } from 'lucide-react'
-import { Node, Edge } from '@xyflow/react'
+import { api } from './api/client'
+import { WorkspaceItem, UserProfile } from './api/types'
+import { DEFAULT_WORKSPACES } from './api/mockData'
 
 export function App() {
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [activeView, setActiveView] = useState<NavViewKey>('overview')
   const [selectedPR, setSelectedPR] = useState<number>(142)
+  const [selectedRepoId, setSelectedRepoId] = useState<string>('repo-inventory')
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false)
+  const [isRegisterRepoModalOpen, setIsRegisterRepoModalOpen] = useState(false)
 
-  // Seeded scenario 1: PR 142 (Dangerous Semantic Violation)
-  const pr142Nodes: Node[] = [
-    {
-      id: 'srv-inventory',
-      position: { x: 280, y: 50 },
-      data: { label: 'inventory-service\n(Provider / Target)', is_origin: true },
-      style: {
-        background: '#1e1b4b',
-        border: '2px solid #ef4444',
-        borderRadius: '12px',
-        color: '#f8fafc',
-        padding: '12px',
-        fontWeight: 'bold',
-        fontSize: '12px',
-        textAlign: 'center',
-        boxShadow: '0 0 20px rgba(239, 68, 68, 0.3)',
-      },
-    },
-    {
-      id: 'srv-checkout',
-      position: { x: 80, y: 220 },
-      data: { label: 'checkout-service\n(Tier 1 • Direct Caller)', is_origin: false },
-      style: {
-        background: '#101726',
-        border: '1.5px solid #3b82f6',
-        borderRadius: '10px',
-        color: '#f8fafc',
-        padding: '10px',
-        fontSize: '11px',
-        textAlign: 'center',
-      },
-    },
-    {
-      id: 'srv-analytics',
-      position: { x: 480, y: 220 },
-      data: { label: 'analytics-pipeline\n(Tier 2 • Kafka Consumer)', is_origin: false },
-      style: {
-        background: '#101726',
-        border: '1.5px solid #3b82f6',
-        borderRadius: '10px',
-        color: '#f8fafc',
-        padding: '10px',
-        fontSize: '11px',
-        textAlign: 'center',
-      },
-    },
-    {
-      id: 'srv-billing',
-      position: { x: 80, y: 390 },
-      data: { label: 'billing-ledger\n(Tier 1 • Transitive)', is_origin: false },
-      style: {
-        background: '#101726',
-        border: '1.5px dashed #64748b',
-        borderRadius: '10px',
-        color: '#cbd5e1',
-        padding: '10px',
-        fontSize: '11px',
-        textAlign: 'center',
-      },
-    },
-  ]
+  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>(DEFAULT_WORKSPACES)
+  const [currentWorkspace, setCurrentWorkspace] = useState<WorkspaceItem>(DEFAULT_WORKSPACES[0])
+  const currentUser: UserProfile = api.getCurrentUser()
 
-  const pr142Edges: Edge[] = [
-    {
-      id: 'e-checkout-inv',
-      source: 'srv-checkout',
-      target: 'srv-inventory',
-      label: 'POST /orders (12.5k RPM)',
-      animated: true,
-    },
-    {
-      id: 'e-analytics-inv',
-      source: 'srv-analytics',
-      target: 'srv-inventory',
-      label: 'Channel: order.events',
-      animated: true,
-    },
-    {
-      id: 'e-billing-checkout',
-      source: 'srv-billing',
-      target: 'srv-checkout',
-      label: 'RPC: VerifyCharge',
-      animated: false,
-    },
-  ]
+  useEffect(() => {
+    async function init() {
+      const ws = await api.fetchWorkspaces()
+      if (ws.length > 0) {
+        setWorkspaces(ws)
+        setCurrentWorkspace(ws[0])
+      }
+    }
+    init()
+  }, [])
 
-  const pr142Violations: ViolationItem[] = [
-    {
-      id: 'v1',
-      rule_code: 'RULE_ENUM_NARROWED',
-      severity: 'BLOCKING',
-      file_path: 'src/api/schemas/order.py',
-      start_line: 42,
-      end_line: 48,
-      message:
-        "Enum narrowed: removed value 'CANCELLED'. Active downstream consumer 'checkout-service' deserializes this status and will crash.",
-      impacted_service: 'checkout-service',
-    },
-    {
-      id: 'v2',
-      rule_code: 'RULE_CLOSED_WORLD_COLLISION',
-      severity: 'BLOCKING',
-      file_path: 'src/api/schemas/order.py',
-      start_line: 65,
-      end_line: 69,
-      message:
-        "Producer added optional property ['warehouse_zone'], but consumer 'checkout-service' enforces strict 'additionalProperties: false'.",
-      impacted_service: 'checkout-service',
-    },
-    {
-      id: 'v3',
-      rule_code: 'RULE_DDL_COLUMN_SHRUNK',
-      severity: 'BLOCKING',
-      file_path: 'migrations/versions/v2_shrink_sku.sql',
-      start_line: 12,
-      end_line: 14,
-      message:
-        "Database column 'sku' shrunk from VARCHAR(64) to VARCHAR(16). Legacy records and downstream consumers query this table directly.",
-      impacted_service: 'analytics-pipeline',
-    },
-  ]
+  const handleNavigate = (view: NavViewKey, repoId?: string) => {
+    if (repoId) setSelectedRepoId(repoId)
+    setActiveView(view)
+  }
 
-  // Seeded scenario 2: PR 143 (Safe Refactor)
-  const pr143Nodes: Node[] = [
-    {
-      id: 'srv-inventory',
-      position: { x: 280, y: 100 },
-      data: { label: 'inventory-service\n(Clean Backward-Compatible)', is_origin: true },
-      style: {
-        background: '#064e3b',
-        border: '2px solid #10b981',
-        borderRadius: '12px',
-        color: '#f8fafc',
-        padding: '12px',
-        fontWeight: 'bold',
-        fontSize: '12px',
-        textAlign: 'center',
-        boxShadow: '0 0 20px rgba(16, 185, 129, 0.3)',
-      },
-    },
-    {
-      id: 'srv-checkout',
-      position: { x: 180, y: 260 },
-      data: { label: 'checkout-service\n(Compatible Open World)', is_origin: false },
-      style: {
-        background: '#101726',
-        border: '1.5px solid #10b981',
-        borderRadius: '10px',
-        color: '#f8fafc',
-        padding: '10px',
-        fontSize: '11px',
-        textAlign: 'center',
-      },
-    },
-  ]
+  const handleAddWorkspace = (name: string, slug: string) => {
+    const newWs: WorkspaceItem = {
+      id: `ws-${Date.now()}`,
+      tenant_id: currentUser.tenant_id,
+      name,
+      slug,
+      created_at: new Date().toISOString(),
+    }
+    setWorkspaces((prev) => [...prev, newWs])
+    setCurrentWorkspace(newWs)
+  }
 
-  const pr143Edges: Edge[] = [
-    {
-      id: 'e-checkout-inv-safe',
-      source: 'srv-checkout',
-      target: 'srv-inventory',
-      label: 'Compatible Contract',
-      animated: true,
-    },
-  ]
+  const handleExecuteScan = async (data: { repo: string; baseSha: string; headSha: string; prNumber: number }) => {
+    setSelectedPR(data.prNumber)
+    await api.triggerScan({
+      repository_id: data.repo,
+      base_commit: data.baseSha,
+      head_commit: data.headSha,
+    })
+    setIsScanModalOpen(false)
+    setActiveView('pull_requests')
+  }
 
   return (
-    <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col font-sans">
-      <Navbar onOpenTriggerModal={() => setIsModalOpen(true)} />
-
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
-        {/* Top PR Header / Switcher */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card border border-border p-4 rounded-xl">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-blue-400 border border-slate-700">
-              <GitPullRequest className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-slate-400">inventory-service</span>
-                <span className="text-slate-500">/</span>
-                <h2 className="text-sm font-bold text-white">
-                  {selectedPR === 142
-                    ? 'PR #142: Refactor inventory item status & alter SKU column'
-                    : 'PR #143: Internal code cleanup and documentation update'}
-                </h2>
-              </div>
-              <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                <span>Branch: <code className="text-blue-400 font-mono">feature/status-refactor</code></span>
-                <span>•</span>
-                <span>Base: <code className="text-slate-300 font-mono">main</code></span>
-              </div>
-            </div>
-          </div>
-
-          {/* PR Scenario Switcher */}
-          <div className="flex items-center gap-1.5 bg-[#090d16] p-1 rounded-lg border border-border self-start sm:self-auto">
-            <button
-              onClick={() => setSelectedPR(142)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                selectedPR === 142
-                  ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <AlertCircle className="w-3.5 h-3.5" />
-              <span>PR #142 (Violations)</span>
-            </button>
-            <button
-              onClick={() => setSelectedPR(143)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                selectedPR === 143
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>PR #143 (Safe)</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Interactive Knowledge Graph & Impact Details Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left: @xyflow/react Interactive Dependency Graph */}
-          <div className="lg:col-span-7 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <Layers className="w-4 h-4 text-blue-400" />
-                Blast Radius Dependency Topology
-              </h3>
-              <span className="text-xs text-slate-400">Interactive DAG (Pan / Zoom / Inspect)</span>
-            </div>
-            <GraphView
-              key={selectedPR}
-              initialNodes={selectedPR === 142 ? pr142Nodes : pr143Nodes}
-              initialEdges={selectedPR === 142 ? pr142Edges : pr143Edges}
+    <AppShell
+      workspaces={workspaces}
+      currentWorkspace={currentWorkspace}
+      onWorkspaceChange={setCurrentWorkspace}
+      currentUser={currentUser}
+      activeView={activeView}
+      onSelectView={setActiveView}
+      onTriggerScan={() => setIsScanModalOpen(true)}
+    >
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeView}
+          initial={{ opacity: 0, y: 6, filter: 'blur(1px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, y: -6, filter: 'blur(1px)' }}
+          transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+          className="space-y-6"
+        >
+          {activeView === 'overview' && (
+            <OverviewDashboard
+              onNavigate={handleNavigate}
+              onTriggerScan={() => setIsScanModalOpen(true)}
+              onRegisterRepo={() => {
+                setActiveView('repositories')
+                setIsRegisterRepoModalOpen(true)
+              }}
             />
-          </div>
+          )}
 
-          {/* Right: Metrics & Impact Breakdown */}
-          <div className="lg:col-span-5">
-            <ScanDetails
-              riskScore={selectedPR === 142 ? 85 : 12}
-              riskLevel={selectedPR === 142 ? 'CRITICAL' : 'LOW'}
-              directConsumers={selectedPR === 142 ? 2 : 1}
-              transitiveConsumers={selectedPR === 142 ? 1 : 0}
-              impactedConsumers={
-                selectedPR === 142
-                  ? [
-                      { name: 'checkout-service', tier: 'TIER_1', hop: 1, rpm: 12500, is_observed: true },
-                      { name: 'analytics-pipeline', tier: 'TIER_2', hop: 1, rpm: 4200, is_observed: true },
-                      { name: 'billing-ledger', tier: 'TIER_1', hop: 2, rpm: 8900, is_observed: true },
-                    ]
-                  : [{ name: 'checkout-service', tier: 'TIER_1', hop: 1, rpm: 12500, is_observed: true }]
-              }
-              recommendedTests={
-                selectedPR === 142
-                  ? [
-                      'pytest --service=checkout-service tests/integration/test_orders.py',
-                      'npm test --prefix=services/checkout-service test/contract.spec.ts',
-                      'pytest --service=billing-ledger tests/integration/test_ledger_sync.py',
-                    ]
-                  : ['pytest tests/unit/']
-              }
+          {activeView === 'repositories' && (
+            <RepositoryManagement
+              onNavigate={handleNavigate}
+              onTriggerScan={() => {
+                setIsScanModalOpen(true)
+              }}
+              isRegisterModalOpen={isRegisterRepoModalOpen}
+              setIsRegisterModalOpen={setIsRegisterRepoModalOpen}
             />
-          </div>
-        </div>
+          )}
 
-        {/* Violations Table */}
-        <ViolationsTable violations={selectedPR === 142 ? pr142Violations : []} />
-      </main>
+          {activeView === 'repo_detail' && (
+            <RepositoryDetail
+              repoId={selectedRepoId}
+              onNavigate={handleNavigate}
+              onTriggerScan={() => setIsScanModalOpen(true)}
+            />
+          )}
 
+          {activeView === 'pull_requests' && (
+            <PullRequestAnalysis
+              selectedPR={selectedPR}
+              setSelectedPR={setSelectedPR}
+              onNavigate={handleNavigate}
+            />
+          )}
+
+          {activeView === 'impact_explorer' && (
+            <ChangeImpactExplorer
+              selectedPR={selectedPR}
+              setSelectedPR={setSelectedPR}
+            />
+          )}
+
+          {activeView === 'semantic_drift' && <SemanticDriftFindings />}
+
+          {activeView === 'runtime_graph' && <RuntimeDependencyGraph />}
+
+          {activeView === 'ontology' && <OntologyExplorer />}
+
+          {activeView === 'workflow_impact' && <WorkflowImpactView />}
+
+          {activeView === 'evidence' && <EvidenceExplorer />}
+
+          {activeView === 'test_recommendations' && <TestRecommendations />}
+
+          {activeView === 'history' && (
+            <AnalysisHistory
+              onNavigate={handleNavigate}
+              onTriggerScan={() => setIsScanModalOpen(true)}
+            />
+          )}
+
+          {activeView === 'integrations' && <IntegrationManagement />}
+
+          {activeView === 'team_settings' && (
+            <WorkspaceTeamSettings
+              workspaces={workspaces}
+              onAddWorkspace={handleAddWorkspace}
+            />
+          )}
+
+          {activeView === 'audit_logs' && <AuditLogsView />}
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Trigger Scan Modal */}
       <TriggerScanModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={(data) => {
-          setSelectedPR(data.prNumber)
-        }}
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        onSubmit={handleExecuteScan}
       />
-    </div>
+    </AppShell>
   )
 }
 

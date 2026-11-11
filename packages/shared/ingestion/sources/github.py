@@ -1,5 +1,6 @@
 """GitHub Remote Repository Ingestion Source."""
 
+import base64
 import subprocess
 from pathlib import Path
 
@@ -24,32 +25,34 @@ class GitHubRepoSource:
         dest = Path(destination_dir).resolve()
         dest.mkdir(parents=True, exist_ok=True)
 
-        # Build authenticated URL if token provided without exposing it in logs
-        repo_url = validated_url
-        if auth_token and "github.com" in validated_url:
-            repo_url = validated_url.replace("https://", f"https://x-access-token:{auth_token}@")
+        auth_config_args: list[str] = []
+        if auth_token:
+            basic_b64 = base64.b64encode(f"x-access-token:{auth_token}".encode()).decode("ascii")
+            auth_config_args = ["-c", f"http.extraHeader=Authorization: Basic {basic_b64}"]
 
         try:
             # 1. Initialize git in destination
             init_cmd = RepoSafetyGuard.sanitize_command_args(["git", "init", str(dest)])
-            subprocess.run(init_cmd, capture_output=True, text=True, check=True)
+            subprocess.run(init_cmd, capture_output=True, text=True, check=True, timeout=30)
 
-            # 2. Add remote
+            # 2. Add remote without writing plaintext credentials to .git/config
             remote_cmd = RepoSafetyGuard.sanitize_command_args(
-                ["git", "-C", str(dest), "remote", "add", "origin", repo_url]
+                ["git", "-C", str(dest), "remote", "add", "origin", validated_url]
             )
-            subprocess.run(remote_cmd, capture_output=True, text=True, check=True)
+            subprocess.run(remote_cmd, capture_output=True, text=True, check=True, timeout=30)
 
-            # 3. Fetch exact commit with depth 1
+            # 3. Fetch exact commit with depth 1 using ephemeral Authorization header
             fetch_cmd = RepoSafetyGuard.sanitize_command_args(
-                ["git", "-C", str(dest), "fetch", "--depth", "1", "origin", clean_sha]
+                ["git", *auth_config_args, "-C", str(dest), "fetch", "--depth", "1", "origin", clean_sha]
             )
-            subprocess.run(fetch_cmd, capture_output=True, text=True, check=True)
+            subprocess.run(fetch_cmd, capture_output=True, text=True, check=True, timeout=60)
 
             # 4. Checkout commit
             checkout_cmd = RepoSafetyGuard.sanitize_command_args(["git", "-C", str(dest), "checkout", clean_sha])
-            subprocess.run(checkout_cmd, capture_output=True, text=True, check=True)
+            subprocess.run(checkout_cmd, capture_output=True, text=True, check=True, timeout=30)
 
+        except subprocess.TimeoutExpired as err:
+            raise IngestionError(f"Git clone operation timed out after {err.timeout}s.") from err
         except subprocess.CalledProcessError as err:
             # Sanitize stderr to remove token if present
             err_msg = err.stderr.replace(auth_token, "***") if auth_token else err.stderr

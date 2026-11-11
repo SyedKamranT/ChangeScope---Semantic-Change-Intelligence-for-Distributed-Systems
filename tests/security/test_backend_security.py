@@ -539,3 +539,85 @@ async def test_rate_limiter_enforcement():
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.retry_after_seconds > 0
+
+
+@pytest.mark.asyncio
+async def test_x_tenant_id_header_cannot_override_default_tenant_jwt(client: AsyncClient):
+    """Verifies that an X-Tenant-ID header cannot override a JWT signed with DEFAULT_TENANT_ID."""
+    default_token = create_access_token(
+        {
+            "sub": "spoof-user",
+            "tenant_id": settings.DEFAULT_TENANT_ID,
+            "roles": ["analyst"],
+        }
+    )
+    res = await client.get(
+        "/api/v1/me",
+        headers={
+            "Authorization": f"Bearer {default_token}",
+            "X-Tenant-ID": "tenant-sec-b",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["tenant_id"] == settings.DEFAULT_TENANT_ID
+    assert res.json()["tenant_id"] != "tenant-sec-b"
+
+
+@pytest.mark.asyncio
+async def test_credential_decryption_requires_administrator_and_audits(client: AsyncClient):
+    """Verifies same-tenant analysts cannot decrypt stored secrets while admins can and are audited."""
+    tenant_id = "tenant-cred-rbac"
+    async with async_session_factory() as session:
+        if not await session.get(Tenant, tenant_id):
+            session.add(Tenant(id=tenant_id, name="Cred RBAC Org", slug=tenant_id, tier="enterprise"))
+            await session.commit()
+
+    admin_headers = _auth_headers(tenant_id, role="administrator", user_id="cred-admin")
+    analyst_headers = _auth_headers(tenant_id, role="analyst", user_id="cred-analyst")
+
+    create_res = await client.post(
+        "/api/v1/credentials",
+        json={"name": "prod-github-secret", "provider": "GITHUB", "secret": "ghp_admin_only_secret_987"},
+        headers=admin_headers,
+    )
+    assert create_res.status_code == 201
+    cred_id = create_res.json()["id"]
+
+    # Same-tenant Analyst must be denied plaintext secret decryption -> 403
+    analyst_res = await client.get(f"/api/v1/credentials/{cred_id}/secret", headers=analyst_headers)
+    assert analyst_res.status_code == 403
+
+    # Same-tenant Administrator allowed -> 200 and recorded in AuditLog
+    admin_res = await client.get(f"/api/v1/credentials/{cred_id}/secret", headers=admin_headers)
+    assert admin_res.status_code == 200
+    assert admin_res.json()["secret"] == "ghp_admin_only_secret_987"
+
+    async with async_session_factory() as session:
+        from sqlalchemy import select
+
+        audit_stmt = select(AuditLog).where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.event_type == "CREDENTIAL_DECRYPTED",
+            AuditLog.resource_id == cred_id,
+        )
+        audit_row = (await session.execute(audit_stmt)).scalar_one_or_none()
+        assert audit_row is not None
+
+
+@pytest.mark.asyncio
+async def test_production_mode_blocks_dev_token_and_unauth_otlp(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
+    """Verifies staging/production blocks unauthenticated /auth/token minting and unauthenticated /v1/traces."""
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+
+    token_res = await client.post(
+        "/api/v1/auth/token",
+        json={"username": "attacker", "tenant_id": "victim-tenant", "role": "organization_owner"},
+    )
+    assert token_res.status_code == 403
+
+    unauth_trace_res = await client.post(
+        "/v1/traces",
+        json={"resourceSpans": []},
+        headers={"X-Tenant-ID": "victim-tenant"},
+    )
+    assert unauth_trace_res.status_code == 401

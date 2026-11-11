@@ -64,8 +64,8 @@ class CredentialService:
         return cred
 
     async def get_decrypted_secret(self, context: SecurityContext, credential_id: str) -> str:
-        """Decrypts and returns the plaintext secret. Requires Analyst role and strict tenant match."""
-        context.assert_role(TenantRole.ANALYST)
+        """Decrypts and returns the plaintext secret. Requires Administrator role and strict tenant match."""
+        context.assert_role(TenantRole.ADMINISTRATOR)
 
         stmt = select(IntegrationCredential).where(IntegrationCredential.id == credential_id)
         res = await self.db.execute(stmt)
@@ -90,7 +90,18 @@ class CredentialService:
                 f"Tenant isolation violation: Cannot access credentials owned by '{cred.tenant_id}'."
             )
 
-        return CredentialEncryption.decrypt(cred.encrypted_secret)
+        plaintext = CredentialEncryption.decrypt(cred.encrypted_secret)
+        await AuditLogger.record_event(
+            db=self.db,
+            tenant_id=context.tenant_id,
+            actor_id=context.user_id,
+            actor_role=str(context.roles),
+            event_type="CREDENTIAL_DECRYPTED",
+            resource_type="IntegrationCredential",
+            resource_id=credential_id,
+            details={"name": cred.name, "provider": cred.provider},
+        )
+        return plaintext
 
     async def list_credentials(self, context: SecurityContext) -> list[IntegrationCredential]:
         """Lists integration credentials for the tenant without decrypting secrets."""

@@ -7,6 +7,7 @@ from typing import Any
 
 from packages.contracts.ddl_parser import DDLParser
 from packages.shared.ingestion.models import DatabaseMigration
+from packages.shared.logger import logger
 
 
 class MigrationExtractor:
@@ -85,8 +86,8 @@ class MigrationExtractor:
                                             if col_node.args and isinstance(col_node.args[0], ast.Constant):
                                                 cname = str(col_node.args[0].value)
                                             columns_added.append({"table": tbl, "column": cname})
-        except SyntaxError:
-            pass
+        except SyntaxError as exc:
+            logger.warning("alembic_migration_ast_parse_failed", file_path=file_path, error=str(exc))
 
         ver_name = Path(file_path).stem
         return DatabaseMigration(

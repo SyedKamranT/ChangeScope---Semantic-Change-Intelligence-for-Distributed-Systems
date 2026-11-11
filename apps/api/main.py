@@ -17,16 +17,18 @@ from packages.contracts.models import ContractFinding
 from packages.shared.config import settings
 from packages.shared.database import close_db, get_db_session, init_db
 from packages.shared.errors import (
+    AuthenticationError,
+    AuthorizationError,
     ChangeScopeBaseError,
     ServiceUnavailableError,
     problem_detail_response,
 )
 from packages.shared.impact import (
     ChangeSetInput,
-    DependencyKnowledgeGraph,
     ImpactReasoningEngine,
     ImpactReasoningResult,
 )
+from packages.shared.integrations.github import GitHubWebhookHandler
 from packages.shared.logger import configure_structured_logging, logger
 from packages.shared.models import (
     IdempotencyRecord,
@@ -38,6 +40,7 @@ from packages.shared.remediation import (
     RemediationOrchestrator,
 )
 from packages.shared.security import (
+    AuditLogger,
     CorrelationIdMiddleware,
     RequestTimeoutMiddleware,
     SecurityContext,
@@ -45,17 +48,19 @@ from packages.shared.security import (
     TenantRole,
     UploadSecurityError,
     UploadValidator,
-    WebhookVerifier,
     clear_session_cookie,
     create_access_token,
+    decode_token,
     get_correlation_id,
     get_current_security_context,
+    oidc_client,
     rate_limiter,
     require_role,
     set_secure_session_cookie,
 )
 from packages.shared.services import (
     CredentialService,
+    GraphQueryService,
     RepositoryService,
     ScanService,
     WorkspaceService,
@@ -293,7 +298,11 @@ class ScanTriggerRequest(BaseModel):
 
 @app.post("/api/v1/auth/token", response_model=TokenResponse, tags=["Authentication"])
 async def acquire_token(req: TokenRequest, response: Response) -> TokenResponse:
-    """Issues a cryptographically signed JWT access token and sets an HttpOnly session cookie."""
+    """Issues a signed JWT access token in local/test mode. Disabled in staging/production."""
+    if settings.ENVIRONMENT in {"staging", "production"} or oidc_client.is_configured:
+        raise AuthorizationError(
+            "Direct local token issuance is disabled in staging/production or when OIDC is configured."
+        )
     tenant_id = req.tenant_id or settings.DEFAULT_TENANT_ID
     claims = {
         "sub": req.username,
@@ -385,15 +394,20 @@ async def list_repositories(
 ) -> list[dict[str, Any]]:
     """Lists registered repositories belonging to the authenticated tenant with pagination."""
     safe_limit = min(max(1, limit), 100)
+    safe_offset = max(0, offset)
     service = RepositoryService(db)
     repos = await service.list_repositories(context, workspace_id=workspace_id)
-    paged = repos[offset : offset + safe_limit]
+    paged = repos[safe_offset : safe_offset + safe_limit]
     return [
         {
             "id": r.id,
+            "tenant_id": r.tenant_id,
+            "workspace_id": r.workspace_id,
             "name": r.name,
             "clone_url": r.clone_url,
             "default_branch": r.default_branch,
+            "language": r.primary_language,
+            "tier": r.tier,
             "status": r.status,
             "created_at": r.created_at.isoformat(),
         }
@@ -544,6 +558,39 @@ async def get_scan_violations(
     ]
 
 
+@app.get("/api/v1/scans", tags=["Scans"])
+async def list_scans(
+    repository_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(get_current_security_context),
+) -> list[dict[str, Any]]:
+    """Lists scan runs for the authenticated tenant with pagination and optional repository filter."""
+    service = ScanService(db)
+    scans = await service.list_scans(context, repository_id=repository_id, limit=limit, offset=offset)
+
+    return [
+        {
+            "id": scan.id,
+            "repository_id": scan.repository_id,
+            "status": scan.status,
+            "risk_score": scan.risk_score,
+            "risk_level": scan.risk_level,
+            "base_commit": scan.base_commit,
+            "head_commit": scan.head_commit,
+            "target_branch": scan.target_branch,
+            "source_branch": scan.source_branch,
+            "blocking_violations_count": scan.blocking_violations_count,
+            "warning_violations_count": scan.warning_violations_count,
+            "duration_ms": scan.duration_ms,
+            "created_at": scan.created_at.isoformat(),
+            "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+        }
+        for scan in scans
+    ]
+
+
 # --- Integration Credentials Endpoints ---
 
 
@@ -604,11 +651,12 @@ async def list_credentials(
 async def get_decrypted_credential_secret(
     credential_id: str,
     db: AsyncSession = Depends(get_db_session),
-    context: SecurityContext = Depends(require_role(TenantRole.ENGINEER)),
+    context: SecurityContext = Depends(require_role(TenantRole.ADMIN)),
 ) -> dict[str, str]:
-    """Decrypts and returns the integration secret. Requires Analyst role."""
+    """Decrypts and returns the integration secret. Requires Administrator role."""
     service = CredentialService(db)
     secret = await service.get_decrypted_secret(context, credential_id)
+    await db.commit()
     return {"secret": secret}
 
 
@@ -622,15 +670,15 @@ async def github_webhook(
     x_github_event: str | None = Header(None, alias="X-GitHub-Event"),
     x_hub_delivery: str | None = Header(None, alias="X-GitHub-Delivery"),
 ) -> dict[str, Any]:
-    """Verifies incoming GitHub webhook signatures and prevents forgery and replay attacks."""
+    """Verifies incoming GitHub webhook signatures, prevents replay attacks, and schedules analysis."""
     payload_bytes = await request.body()
-    WebhookVerifier.verify_github_signature(
+    result = await GitHubWebhookHandler.handle_webhook(
         payload_bytes=payload_bytes,
         signature_header=x_hub_signature_256,
-        secret=settings.GITHUB_WEBHOOK_SECRET,
+        event_type=x_github_event,
+        delivery_id=x_hub_delivery,
     )
-    logger.info("github_webhook_verified", webhook_event=x_github_event, delivery_id=x_hub_delivery)
-    return {"status": "ACCEPTED", "event": x_github_event}
+    return result.model_dump()
 
 
 class UploadSpecRequest(BaseModel):
@@ -689,18 +737,47 @@ async def ingest_otlp_traces(
     except Exception:
         body = {}
 
-    # Resolve tenant from header or fallback
+    # Authenticate collector token if provided or enforce in staging/production
+    auth_header = request.headers.get("Authorization") or ""
+    raw_token = request.headers.get("X-ChangeScope-Token") or request.headers.get("x-changescope-token")
+    if not raw_token and auth_header.lower().startswith("bearer "):
+        raw_token = auth_header[7:].strip()
+
     header_tenant = request.headers.get("X-Tenant-ID") or request.headers.get("x-tenant-id")
-    tenant_id = header_tenant or "tenant-default"
+    if raw_token:
+        if oidc_client.is_configured:
+            signing_key = oidc_client.get_signing_key_for_token(raw_token)
+            token_payload = decode_token(
+                token=raw_token,
+                key=signing_key,
+                algorithms=["RS256"],
+                audience=settings.OIDC_AUDIENCE,
+                issuer=settings.OIDC_ISSUER_URL,
+            )
+        else:
+            token_payload = decode_token(
+                token=raw_token,
+                key=settings.JWT_SECRET,
+                algorithms=[settings.JWT_ALGORITHM],
+            )
+        tenant_id = token_payload.tenant_id
+    elif settings.ENVIRONMENT in {"staging", "production"}:
+        raise AuthenticationError(
+            "OTLP collector token is required in staging/production ('Authorization: Bearer' or 'X-ChangeScope-Token')."
+        )
+    else:
+        if header_tenant:
+            logger.debug("otlp_trace_unauthenticated_header_tenant_local", tenant_id=header_tenant)
+        tenant_id = header_tenant or "tenant-default"
 
     # Extract & scrub spans
     spans = SpanExtractor.extract_spans(body)
     if not spans:
         return {"status": "ACCEPTED", "spans_ingested": 0, "dependencies_observed": 0}
 
-    # If spans specify changescope.tenant_id in resource attributes, honor it
+    # Only fall back to resource attributes in unauthenticated local/test collector ingestion
     first_res_tenant = spans[0].attributes.get("changescope.tenant_id") or spans[0].attributes.get("tenant.id")
-    if first_res_tenant and not header_tenant:
+    if first_res_tenant and not header_tenant and not raw_token:
         tenant_id = str(first_res_tenant)
 
     # 1. Buffer spans for audit and trace evidence
@@ -932,53 +1009,7 @@ async def evaluate_changeset_impact(
 ) -> ImpactReasoningResult:
     """Evaluates multi-hop impact and deterministic risk for a proposed ChangeSet."""
     changeset.tenant_id = context.tenant_id
-    graph = DependencyKnowledgeGraph(tenant_id=context.tenant_id)
-
-    # 1. Load runtime dependencies
-    dep_stmt = select(RuntimeDependency).where(RuntimeDependency.tenant_id == context.tenant_id)
-    runtime_deps = (await db.execute(dep_stmt)).scalars().all()
-    for d in runtime_deps:
-        graph.add_node(
-            node_id=d.caller_service_name,
-            name=d.caller_service_name,
-            entity_type="Service",
-        )
-        graph.add_node(
-            node_id=d.callee_service_name,
-            name=d.callee_service_name,
-            entity_type="Service" if not d.callee_service_name.startswith("db:") else "Database",
-        )
-        rel_type = "READS" if d.protocol == "DATABASE" else ("PUBLISHES" if d.protocol == "MESSAGING" else "CALLS")
-        graph.add_edge(
-            source_id=d.caller_service_name,
-            target_id=d.callee_service_name,
-            relationship_type=rel_type,
-            confidence=1.0,
-            provenance="RUNTIME_OBSERVED",
-            is_observed=True,
-            call_count_7d=d.call_count_7d,
-            p95_latency_ms=d.p95_latency_ms,
-            last_observed_at=d.last_observed_at,
-            evidence_refs=[f"Trace exemplar: {d.exemplar_trace_id}"] if d.exemplar_trace_id else [],
-        )
-
-    # 2. Load certified ontology relationships
-    from packages.shared.ontology_models import OntologyRelationship
-
-    rel_stmt = select(OntologyRelationship).where(OntologyRelationship.tenant_id == context.tenant_id)
-    ontology_rels = (await db.execute(rel_stmt)).scalars().all()
-    for rel in ontology_rels:
-        graph.add_edge(
-            source_id=rel.source_id,
-            target_id=rel.target_id,
-            relationship_type=rel.rel_type,
-            confidence=rel.confidence,
-            provenance=rel.provenance,
-            valid_from=rel.valid_from,
-            valid_to=rel.valid_to,
-            evidence_refs=rel.evidence_refs or [],
-        )
-
+    graph = await GraphQueryService.build_tenant_graph(db, tenant_id=context.tenant_id)
     engine = ImpactReasoningEngine(graph=graph)
     return engine.evaluate_changeset(changeset)
 
@@ -1007,3 +1038,121 @@ async def generate_remediation_report(
         findings=req.findings,
         known_test_files=req.known_test_files or None,
     )
+
+
+# --- Security Audit & Domain Intelligence Endpoints ---
+
+
+@app.get("/api/v1/audit-logs", tags=["Audit Logs"])
+async def list_audit_logs(
+    event_type: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(get_current_security_context),
+) -> list[dict[str, Any]]:
+    """Retrieves tenant-scoped security audit trail. Enforces Administrator role."""
+    context.assert_role(TenantRole.ADMINISTRATOR)
+    events = await AuditLogger.list_events(db, context.tenant_id, event_type=event_type, limit=limit, offset=offset)
+    return [
+        {
+            "id": log.id,
+            "actor_id": log.actor_id,
+            "actor_role": log.actor_role,
+            "event_type": log.event_type,
+            "resource_type": log.resource_type,
+            "resource_id": log.resource_id,
+            "client_ip": log.client_ip,
+            "status": log.status,
+            "details": log.details,
+            "created_at": log.created_at.isoformat(),
+        }
+        for log in events
+    ]
+
+
+@app.get("/api/v1/ontology/concepts", tags=["Ontology"])
+async def list_ontology_concepts(
+    context: SecurityContext = Depends(get_current_security_context),
+) -> dict[str, Any]:
+    """Retrieves certified software engineering ontology entities and relationships."""
+    context.assert_role(TenantRole.VIEWER)
+    from packages.shared.ontology_models import CoreEntityType, RelationshipType
+
+    return {
+        "certified_version": "1.0.0",
+        "provider": "LocalOntologyProvider + NvidiaAutoOntologyVerified",
+        "entities": [
+            {
+                "name": entity.value,
+                "urn_pattern": f"urn:changescope:{entity.value.lower()}:{{id}}",
+                "status": "CERTIFIED_DETERMINISTIC",
+                "certification_confidence": 1.0,
+            }
+            for entity in CoreEntityType
+        ],
+        "relationships": [
+            {
+                "name": rel.value,
+                "status": "CERTIFIED",
+                "evidence_required": True,
+            }
+            for rel in RelationshipType
+        ],
+    }
+
+
+@app.get("/api/v1/workflows", tags=["Workflows"])
+async def list_workflows(
+    db: AsyncSession = Depends(get_db_session),
+    context: SecurityContext = Depends(get_current_security_context),
+) -> list[dict[str, Any]]:
+    """Retrieves tenant-scoped business workflows from certified ontology entities and scan impacts."""
+    context.assert_role(TenantRole.VIEWER)
+    from packages.shared.models import ScanRun
+    from packages.shared.ontology_models import OntologyEntity, OntologyRelationship
+
+    wf_stmt = select(OntologyEntity).where(
+        OntologyEntity.tenant_id == context.tenant_id,
+        OntologyEntity.entity_type == "Workflow",
+    )
+    wf_entities = list((await db.execute(wf_stmt)).scalars().all())
+    if not wf_entities:
+        return []
+
+    rel_stmt = select(OntologyRelationship).where(
+        OntologyRelationship.tenant_id == context.tenant_id,
+        OntologyRelationship.rel_type == "PART_OF_WORKFLOW",
+    )
+    wf_rels = list((await db.execute(rel_stmt)).scalars().all())
+
+    recent_blocking_stmt = select(ScanRun).where(
+        ScanRun.tenant_id == context.tenant_id,
+        ScanRun.blocking_violations_count > 0,
+    )
+    has_recent_blocking = (await db.execute(recent_blocking_stmt)).scalars().first() is not None
+
+    results: list[dict[str, Any]] = []
+    for wf in wf_entities:
+        props = wf.properties_payload or {}
+        constituent_steps = [
+            {
+                "step_index": idx + 1,
+                "service": rel.source_id,
+                "operation": (rel.metadata_payload or {}).get("operation", "PART_OF_WORKFLOW"),
+            }
+            for idx, rel in enumerate(wf_rels)
+            if rel.target_id == wf.id
+        ]
+        results.append(
+            {
+                "id": wf.id,
+                "name": wf.name,
+                "criticality": props.get("criticality", "TIER_2_STANDARD"),
+                "owner": props.get("owner", "unassigned"),
+                "steps": props.get("steps", constituent_steps),
+                "disrupted_by_recent_scans": bool(props.get("disrupted_by_recent_scans", has_recent_blocking)),
+                "disruption_reason": props.get("disruption_reason") or wf.description,
+            }
+        )
+    return results
