@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.contracts.models import ContractFinding
 from packages.shared.config import settings
 from packages.shared.database import close_db, get_db_session, init_db
 from packages.shared.errors import (
@@ -37,6 +38,10 @@ from packages.shared.models import (
     Tenant,
     Violation,
     Workspace,
+)
+from packages.shared.remediation import (
+    IncidentPreventionReport,
+    RemediationOrchestrator,
 )
 from packages.shared.security import (
     CorrelationIdMiddleware,
@@ -870,3 +875,29 @@ async def evaluate_changeset_impact(
 
     engine = ImpactReasoningEngine(graph=graph)
     return engine.evaluate_changeset(changeset)
+
+
+# --- Remediation Intelligence Endpoints ---
+
+
+class RemediationReportRequest(BaseModel):
+    scan_id: str
+    impact_result: ImpactReasoningResult
+    findings: list[ContractFinding] = Field(default_factory=list)
+    known_test_files: list[str] = Field(default_factory=list)
+
+
+@app.post("/api/v1/remediation/report", tags=["Remediation"], response_model=IncidentPreventionReport)
+async def generate_remediation_report(
+    req: RemediationReportRequest,
+    context: SecurityContext = Depends(require_role(TenantRole.ENGINEER)),
+) -> IncidentPreventionReport:
+    """Generates an evidence-backed incident prevention and remediation report."""
+    orchestrator = RemediationOrchestrator()
+    return orchestrator.generate_incident_prevention_report(
+        scan_id=req.scan_id,
+        tenant_id=context.tenant_id,
+        impact_result=req.impact_result,
+        findings=req.findings,
+        known_test_files=req.known_test_files or None,
+    )

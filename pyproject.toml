@@ -29,6 +29,8 @@ dependencies = [
     "pyjwt[crypto]>=2.9.0",
     "structlog>=24.4.0",
     "python-multipart>=0.0.12",
+    "langgraph",
+    "langchain-core",
 ]
 
 [project.optional-dependencies]
