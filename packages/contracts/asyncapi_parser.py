@@ -105,6 +105,12 @@ class AsyncAPIParser:
                     payload_schema = message.get("payload", {}) if isinstance(message, dict) else {}
                     message_name = message.get("name") if isinstance(message, dict) else None
 
+                    channel_bindings = (
+                        channel_item.get("bindings", {}) if isinstance(channel_item.get("bindings"), dict) else {}
+                    )
+                    op_bindings = op_data.get("bindings", {}) if isinstance(op_data.get("bindings"), dict) else {}
+                    combined_bindings = {**channel_bindings, **op_bindings}
+
                     operations.append(
                         AsyncOperation(
                             channel_name=channel_name,
@@ -112,7 +118,7 @@ class AsyncAPIParser:
                             operation_id=op_id,
                             message_name=message_name,
                             payload_schema=payload_schema,
-                            bindings=channel_item.get("bindings", {}),
+                            bindings=combined_bindings,
                         )
                     )
 
