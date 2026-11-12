@@ -1,5 +1,6 @@
 """ChangeScope Neo4j Driver & Connection Management with Offline Mock Mode."""
 
+import asyncio
 from typing import Any
 
 from changescope.common.logger import logger
@@ -65,15 +66,22 @@ class GraphDriverFactory:
     """Factory providing AsyncDriver or MockDriver based on configuration."""
 
     _driver: AsyncDriver | MockNeo4jDriver | None = None
+    _driver_loop: asyncio.AbstractEventLoop | None = None
 
     @classmethod
     async def get_driver(cls) -> AsyncDriver | MockNeo4jDriver:
+        current_loop = asyncio.get_running_loop()
         if cls._driver is not None:
-            return cls._driver
+            if cls._driver_loop is current_loop:
+                return cls._driver
+            # Previous event loop closed or changed: discard stale AsyncDriver safely
+            cls._driver = None
+            cls._driver_loop = None
 
         if settings.NEO4J_MOCK_MODE or settings.ENVIRONMENT == "test":
             logger.info("Using MockNeo4jDriver for offline execution")
             cls._driver = MockNeo4jDriver()
+            cls._driver_loop = current_loop
             return cls._driver
 
         try:
@@ -82,6 +90,7 @@ class GraphDriverFactory:
                 settings.NEO4J_URI,
                 auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
             )
+            cls._driver_loop = current_loop
             # Verify connectivity
             async with cls._driver.session(database=settings.NEO4J_DATABASE) as session:
                 await session.run("RETURN 1 AS ping")
@@ -89,6 +98,7 @@ class GraphDriverFactory:
         except Exception as e:
             logger.warning("Neo4j connection failed; falling back to MockNeo4jDriver", error=str(e))
             cls._driver = MockNeo4jDriver()
+            cls._driver_loop = current_loop
             return cls._driver
 
     @classmethod
@@ -96,3 +106,4 @@ class GraphDriverFactory:
         if cls._driver is not None:
             await cls._driver.close()
             cls._driver = None
+            cls._driver_loop = None

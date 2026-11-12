@@ -1,6 +1,7 @@
 """Production-grade rate limiting with Redis sliding-window and in-memory fallback."""
 
 import time
+import uuid
 from collections import defaultdict
 
 from packages.shared.config import settings
@@ -81,10 +82,11 @@ class RateLimiter:
                 r = aioredis.from_url(settings.REDIS_URL, socket_timeout=0.5, socket_connect_timeout=0.5)
                 now = time.time()
                 redis_key = f"ratelimit:{key}"
+                member = f"{now}:{uuid.uuid4().hex}"
 
                 pipe = r.pipeline()
                 pipe.zremrangebyscore(redis_key, 0, now - window_seconds)
-                pipe.zadd(redis_key, {str(now): now})
+                pipe.zadd(redis_key, {member: now})
                 pipe.zcard(redis_key)
                 pipe.expire(redis_key, window_seconds + 5)
                 results = await pipe.execute()

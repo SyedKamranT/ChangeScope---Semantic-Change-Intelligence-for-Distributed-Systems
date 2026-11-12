@@ -289,10 +289,10 @@ async def test_celery_cancellation_and_dead_letter_handling(sample_tenant_and_re
     )
     assert res_cancel["status"] == "CANCELLED"
 
-    # 2. Dead-letter test: Non-existent repo ID
+    # 2. Dead-letter test: Non-existent repo ID lookup during worker execution
     bad_scan = ScanRun(
         tenant_id=tenant.id,
-        repository_id="non-existent-repo-id",
+        repository_id=repo.id,
         base_sha="0" * 40,
         head_sha="5" * 40,
         status="PENDING",

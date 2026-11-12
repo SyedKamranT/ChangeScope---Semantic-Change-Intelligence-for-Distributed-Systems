@@ -4,7 +4,7 @@
 
 **Evaluation Date:** 2026-11-11  
 **Total Seeded Scenarios:** 52 (35 Development, 17 Holdout)  
-**Generative Explainability Mode:** Disabled (`--no-ollama`: deterministic evaluation only)  
+**Generative Explainability Mode:** Ollama `qwen3:4b` (Live local quantized inference verified across 3 samples)  
 **Cost Per Analysis:** $0.00 (Zero API expense, 100% on-premises execution)  
 
 ---
@@ -18,7 +18,7 @@ Modern distributed microservice architectures suffer from silent production outa
 2. **Transitive & Runtime Recall:** Baseline A achieved **56.8%** recall and Baseline B achieved **54.5%** recall. ChangeScope demonstrated **100.0%** recall by correlating OpenTelemetry distributed traces with graph blast radius reasoning.
 3. **Zero False Positives on Non-Breaking Changes:** ChangeScope achieved a **0.0%** false positive rate on the 7 seeded negative control scenarios (Category 15: private refactoring, README updates, optional fields, test fixtures).
 4. **Holdout Generalization:** ChangeScope maintained an F1-score of **1.0000** on the unseen 17-scenario Holdout split versus **1.0000** on the Development split, demonstrating zero overfitting to development fixtures.
-5. **Deterministic Latency SLA:** Core deterministic change analysis executes in **0.10ms** (p95: **0.15ms**), comfortably within the strict <250ms pre-commit SLA.
+5. **Deterministic Latency SLA:** Core deterministic change analysis executes in **0.24ms** (p95: **0.48ms**), comfortably within the strict <250ms pre-commit SLA.
 
 ---
 
@@ -37,8 +37,8 @@ Evaluation across all 52 seeded scenarios:
 | **Impact Path Accuracy** | 13.5% | 44.2% | **100.0%** | +55.8% |
 | **False Positive Rate (FPR)** | 0.0% | 0.0% | **0.0%** | 0.0% |
 | **False Negative Rate (FNR)** | 43.2% | 45.5% | **0.0%** | -45.5% |
-| **Deterministic Latency (Avg)** | 0.00ms | 0.01ms | **0.10ms** | +0.09ms |
-| **Deterministic Latency (P95)** | 0.01ms | 0.01ms | **0.15ms** | +0.14ms |
+| **Deterministic Latency (Avg)** | 0.01ms | 0.01ms | **0.24ms** | +0.23ms |
+| **Deterministic Latency (P95)** | 0.01ms | 0.02ms | **0.48ms** | +0.46ms |
 | **Cost Per Analysis** | $0.00 | $0.00 | **$0.00** | $0.00 |
 
 ---
@@ -49,8 +49,8 @@ To ensure that ChangeScope's rules, ontology resolvers, and graph heuristics wer
 
 | Dataset Split | Scenarios | Precision | Recall | F1-Score | Breaking Detection | Semantic Detection | FPR | FNR | Avg Latency |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Development (Train/Dev)** | 35 | 100.0% | 100.0% | **1.0000** | 100.0% | 100.0% | 0.0% | 0.0% | 0.10ms |
-| **Holdout (Quarantined Test)** | 17 | 100.0% | 100.0% | **1.0000** | 100.0% | 100.0% | 0.0% | 0.0% | 0.10ms |
+| **Development (Train/Dev)** | 35 | 100.0% | 100.0% | **1.0000** | 100.0% | 100.0% | 0.0% | 0.0% | 0.17ms |
+| **Holdout (Quarantined Test)** | 17 | 100.0% | 100.0% | **1.0000** | 100.0% | 100.0% | 0.0% | 0.0% | 0.39ms |
 
 > **Generalization Insight:** The F1-score delta between Development and Holdout evaluation is ≤ 0.005, confirming robust generalization across novel domain concepts, temporal representations, and microservice call graphs.
 
@@ -100,9 +100,9 @@ Evaluation of blast radius traversal across synthetic enterprise graph topologie
 
 | Scale Tier | Graph Nodes | Graph Edges | Traversal Latency | SLA Status |
 | :--- | :---: | :---: | :---: | :---: |
-| **100 Nodes** | 100 nodes | 197 edges | **0.39ms** | ✅ PASS (<100ms) |
-| **500 Nodes** | 500 nodes | 997 edges | **0.39ms** | ✅ PASS (<100ms) |
-| **1000 Nodes** | 1,000 nodes | 1,997 edges | **0.47ms** | ✅ PASS (<100ms) |
+| **100 Nodes** | 100 nodes | 197 edges | **0.63ms** | ✅ PASS (<100ms) |
+| **500 Nodes** | 500 nodes | 997 edges | **0.57ms** | ✅ PASS (<100ms) |
+| **1000 Nodes** | 1,000 nodes | 1,997 edges | **0.64ms** | ✅ PASS (<100ms) |
 
 ---
 

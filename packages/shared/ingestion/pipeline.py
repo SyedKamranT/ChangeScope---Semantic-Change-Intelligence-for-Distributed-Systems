@@ -101,24 +101,25 @@ class IngestionPipeline:
                         metadata["partial_errors"] = artifact.partial_errors
                         scan.error_message = f"{len(artifact.partial_errors)} file(s) had partial parsing warnings."
 
-            # Insert ASTSymbol records
-            for sym in artifact.symbols:
-                ast_sym = ASTSymbol(
-                    id=str(uuid.uuid4()),
-                    scan_id=scan_id or str(uuid.uuid4()),
-                    tenant_id=tenant_id,
-                    file_path=sym.file_path,
-                    start_line=sym.start_line,
-                    end_line=sym.end_line,
-                    symbol_type=sym.symbol_type,
-                    name=sym.name,
-                    signature=sym.signature,
-                    metadata_payload={
-                        "decorators": sym.decorators,
-                        "docstring": sym.docstring,
-                    },
-                )
-                session.add(ast_sym)
+            # Insert ASTSymbol records only when linked to a persisted ScanRun
+            if scan_id:
+                for sym in artifact.symbols:
+                    ast_sym = ASTSymbol(
+                        id=str(uuid.uuid4()),
+                        scan_id=scan_id,
+                        tenant_id=tenant_id,
+                        file_path=sym.file_path,
+                        start_line=sym.start_line,
+                        end_line=sym.end_line,
+                        symbol_type=sym.symbol_type,
+                        name=sym.name,
+                        signature=sym.signature,
+                        metadata_payload={
+                            "decorators": sym.decorators,
+                            "docstring": sym.docstring,
+                        },
+                    )
+                    session.add(ast_sym)
 
             # Insert Candidate Relationships into ontology_candidates table
             for cand_rel in artifact.candidate_relationships:

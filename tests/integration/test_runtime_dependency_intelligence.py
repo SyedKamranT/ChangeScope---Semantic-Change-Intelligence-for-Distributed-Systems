@@ -208,6 +208,7 @@ async def test_worker_span_aggregation_and_outbox_event():
     async with async_session_factory() as session:
         if not await session.get(Tenant, tenant_id):
             session.add(Tenant(id=tenant_id, name="Worker Agg Tenant", slug=tenant_id, tier="enterprise"))
+            await session.flush()
 
         # Create two buffered spans
         s1 = RuntimeTraceSpan(

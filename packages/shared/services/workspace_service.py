@@ -70,7 +70,7 @@ class WorkspaceService:
             tenant = Tenant(
                 id=context.tenant_id,
                 name="Default Organization",
-                slug=f"org-{context.tenant_id[:8]}",
+                slug=f"org-{context.tenant_id}"[:100],
                 tier="enterprise",
             )
             self.db.add(tenant)

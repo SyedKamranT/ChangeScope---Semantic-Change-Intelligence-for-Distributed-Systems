@@ -22,10 +22,10 @@
         "impact_path_accuracy": 0.1346,
         "false_positive_rate": 0.0,
         "false_negative_rate": 0.4318,
-        "avg_latency_ms": 0.0,
+        "avg_latency_ms": 0.01,
         "p95_latency_ms": 0.01,
         "total_cost_usd": 0.0,
-        "evaluated_at": "2026-11-11 19:01:30.514066+00:00"
+        "evaluated_at": "2026-11-12 14:16:25.006500+00:00"
       },
       "Baseline B (Static Analysis)": {
         "baseline_name": "Baseline B (Static Analysis)",
@@ -46,9 +46,9 @@
         "false_positive_rate": 0.0,
         "false_negative_rate": 0.4545,
         "avg_latency_ms": 0.01,
-        "p95_latency_ms": 0.01,
+        "p95_latency_ms": 0.02,
         "total_cost_usd": 0.0,
-        "evaluated_at": "2026-11-11 19:01:30.514066+00:00"
+        "evaluated_at": "2026-11-12 14:16:25.006500+00:00"
       },
       "Baseline C (ChangeScope)": {
         "baseline_name": "Baseline C (ChangeScope)",
@@ -68,10 +68,10 @@
         "impact_path_accuracy": 1.0,
         "false_positive_rate": 0.0,
         "false_negative_rate": 0.0,
-        "avg_latency_ms": 0.1,
-        "p95_latency_ms": 0.15,
+        "avg_latency_ms": 0.24,
+        "p95_latency_ms": 0.48,
         "total_cost_usd": 0.0,
-        "evaluated_at": "2026-11-11 19:01:30.514066+00:00"
+        "evaluated_at": "2026-11-12 14:17:01.161079+00:00"
       }
     },
     "DEVELOPMENT": {
@@ -93,10 +93,10 @@
         "impact_path_accuracy": 0.1143,
         "false_positive_rate": 0.0,
         "false_negative_rate": 0.4333,
-        "avg_latency_ms": 0.0,
+        "avg_latency_ms": 0.01,
         "p95_latency_ms": 0.01,
         "total_cost_usd": 0.0,
-        "evaluated_at": "2026-11-11 19:01:30.514066+00:00"
+        "evaluated_at": "2026-11-12 14:16:25.006500+00:00"
       },
       "Baseline B (Static Analysis)": {
         "baseline_name": "Baseline B (Static Analysis)",
@@ -117,9 +117,9 @@
         "false_positive_rate": 0.0,
         "false_negative_rate": 0.4333,
         "avg_latency_ms": 0.01,
-        "p95_latency_ms": 0.01,
+        "p95_latency_ms": 0.02,
         "total_cost_usd": 0.0,
-        "evaluated_at": "2026-11-11 19:01:30.514066+00:00"
+        "evaluated_at": "2026-11-12 14:16:25.006500+00:00"
       },
       "Baseline C (ChangeScope)": {
         "baseline_name": "Baseline C (ChangeScope)",
@@ -139,10 +139,10 @@
         "impact_path_accuracy": 1.0,
         "false_positive_rate": 0.0,
         "false_negative_rate": 0.0,
-        "avg_latency_ms": 0.1,
-        "p95_latency_ms": 0.32,
+        "avg_latency_ms": 0.17,
+        "p95_latency_ms": 0.48,
         "total_cost_usd": 0.0,
-        "evaluated_at": "2026-11-11 19:01:30.514066+00:00"
+        "evaluated_at": "2026-11-12 14:17:01.161079+00:00"
       }
     },
     "HOLDOUT": {
@@ -164,10 +164,10 @@
         "impact_path_accuracy": 0.1765,
         "false_positive_rate": 0.0,
         "false_negative_rate": 0.4286,
-        "avg_latency_ms": 0.0,
+        "avg_latency_ms": 0.01,
         "p95_latency_ms": 0.01,
         "total_cost_usd": 0.0,
-        "evaluated_at": "2026-11-11 19:01:30.514066+00:00"
+        "evaluated_at": "2026-11-12 14:16:25.006500+00:00"
       },
       "Baseline B (Static Analysis)": {
         "baseline_name": "Baseline B (Static Analysis)",
@@ -187,10 +187,10 @@
         "impact_path_accuracy": 0.4706,
         "false_positive_rate": 0.0,
         "false_negative_rate": 0.5,
-        "avg_latency_ms": 0.0,
+        "avg_latency_ms": 0.01,
         "p95_latency_ms": 0.01,
         "total_cost_usd": 0.0,
-        "evaluated_at": "2026-11-11 19:01:30.514066+00:00"
+        "evaluated_at": "2026-11-12 14:16:25.006500+00:00"
       },
       "Baseline C (ChangeScope)": {
         "baseline_name": "Baseline C (ChangeScope)",
@@ -210,10 +210,10 @@
         "impact_path_accuracy": 1.0,
         "false_positive_rate": 0.0,
         "false_negative_rate": 0.0,
-        "avg_latency_ms": 0.1,
-        "p95_latency_ms": 0.15,
+        "avg_latency_ms": 0.39,
+        "p95_latency_ms": 4.06,
         "total_cost_usd": 0.0,
-        "evaluated_at": "2026-11-11 19:01:30.514066+00:00"
+        "evaluated_at": "2026-11-12 14:17:01.161079+00:00"
       }
     }
   },
@@ -252,11 +252,11 @@
         "tier": "100 Nodes",
         "nodes": 100,
         "edges": 197,
-        "latency_ms": 0.39,
+        "latency_ms": 0.63,
         "passed": true,
         "node_count": 100,
         "edge_count": 197,
-        "avg_latency_ms": 0.39,
+        "avg_latency_ms": 0.63,
         "sla_passed": true,
         "affected_discovered": 10
       },
@@ -264,11 +264,11 @@
         "tier": "500 Nodes",
         "nodes": 500,
         "edges": 997,
-        "latency_ms": 0.39,
+        "latency_ms": 0.57,
         "passed": true,
         "node_count": 500,
         "edge_count": 997,
-        "avg_latency_ms": 0.39,
+        "avg_latency_ms": 0.57,
         "sla_passed": true,
         "affected_discovered": 10
       },
@@ -276,11 +276,11 @@
         "tier": "1000 Nodes",
         "nodes": 1000,
         "edges": 1997,
-        "latency_ms": 0.47,
+        "latency_ms": 0.64,
         "passed": true,
         "node_count": 1000,
         "edge_count": 1997,
-        "avg_latency_ms": 0.47,
+        "avg_latency_ms": 0.64,
         "sla_passed": true,
         "affected_discovered": 10
       }

@@ -209,6 +209,7 @@ async def test_cross_tenant_telemetry_and_credentials_isolation(client: AsyncCli
         for tid in [tenant_x, tenant_y]:
             if not await session.get(Tenant, tid):
                 session.add(Tenant(id=tid, name=tid, slug=tid, tier="enterprise"))
+        await session.flush()
 
         # Seed telemetry for Tenant Y only
         dep_y = RuntimeDependency(
@@ -492,6 +493,12 @@ async def test_idempotency_deduplication(client: AsyncClient):
     async with async_session_factory() as session:
         if not await session.get(Tenant, tenant_id):
             session.add(Tenant(id=tenant_id, name="Idem Org", slug=tenant_id, tier="enterprise"))
+            await session.flush()
+        from packages.shared.models import Workspace
+
+        if not await session.get(Workspace, "ws-idem-1"):
+            session.add(Workspace(id="ws-idem-1", tenant_id=tenant_id, name="Idem WS", slug="idem-ws"))
+            await session.flush()
 
         repo = Repository(
             id="repo-idem-1",

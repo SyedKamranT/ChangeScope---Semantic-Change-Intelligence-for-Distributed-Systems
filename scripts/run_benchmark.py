@@ -100,7 +100,9 @@ def format_markdown_report(
     if not use_ollama:
         llm_status = "Disabled (`--no-ollama`: deterministic evaluation only)"
     elif live_llm_calls > 0 and fallback_llm_calls == 0:
-        llm_status = f"Ollama `{ollama_model}` (Live local quantized inference verified across {live_llm_calls} samples)"
+        llm_status = (
+            f"Ollama `{ollama_model}` (Live local quantized inference verified across {live_llm_calls} samples)"
+        )
     elif live_llm_calls > 0:
         llm_status = f"Ollama `{ollama_model}` ({live_llm_calls} live, {fallback_llm_calls} offline fallback)"
     else:

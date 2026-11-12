@@ -42,6 +42,7 @@ async def test_impact_evaluate_endpoint_authenticated(client: AsyncClient):
     async with async_session_factory() as session:
         if not await session.get(Tenant, tenant_id):
             session.add(Tenant(id=tenant_id, name="Impact API Tenant", slug=tenant_id, tier="enterprise"))
+            await session.flush()
 
         # Seed a runtime dependency for this tenant: api-gateway -> order-service
         dep = RuntimeDependency(
